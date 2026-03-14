@@ -145,7 +145,7 @@ Isso permite testar diferentes condições de meio e ganhos do PID sem alterar o
 
 ---
 
-## Potenciômetro 50 kΩ e microcontrolador (implementação real)
+## Microcontrolador (implementação real)
 
 A saída do PID no modelo é potência normalizada (0–1). No **equipamento real**, essa saída é convertida em resistência do potenciômetro (0–50 kΩ) e em valor para DAC/PWM pela classe **`MapeamentoPotenciometro`** em `src/potentiometer.py`. Os ganhos ajustados na simulação podem ser usados diretamente no firmware embarcado (ESP32, ARM ou outro microcontrolador).
 
