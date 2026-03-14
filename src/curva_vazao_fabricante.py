@@ -1,9 +1,10 @@
 """
-Curva característica Vazão Total × Pressão de Entrada do fabricante.
+Curva característica Vazão Total × Pressão de Entrada do fabricante (apenas referência).
 
 Baseado no gráfico do fabricante: eixo X = Pressão de Entrada dinâmica [m.c.a.],
-eixo Y = Vazão Total [L/min]. Permite obter a vazão de saída do chuveiro em função
-da pressão da rede hidráulica.
+eixo Y = Vazão Total [L/min]. Usado apenas para consulta e pelo script
+plotar_curva_vazao.py. A simulação da malha PID não utiliza pressão; a vazão
+é sempre informada diretamente (ConfiguracaoSimulacao.vazao_lmin).
 
 Referência: curva fornecida pelo fabricante (Lorenzetti Advanced Eletrônica Blindada).
 """

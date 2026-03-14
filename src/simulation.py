@@ -13,24 +13,19 @@ import numpy as np
 from .shower_model import ModeloChuveiro, ParamsChuveiro
 from .pid_controller import ControladorPID, ParamsPID
 from .potentiometer import MapeamentoPotenciometro
-from .curva_vazao_fabricante import vazao_por_pressao
 
 
 @dataclass
 class ConfiguracaoSimulacao:
     """
-    Configuração de uma corrida de simulação: duração, passo, vazão (ou pressão) e setpoint.
+    Configuração de uma corrida de simulação: duração, passo, vazão e setpoint.
 
-    A vazão pode ser definida de duas formas:
-    - vazao_lmin: valor fixo [L/min] durante toda a simulação.
-    - pressao_entrada_mca: se definido, a vazão é obtida da curva do fabricante
-      (Vazão × Pressão de Entrada) e vazao_lmin é ignorado.
+    A vazão é informada diretamente em vazao_lmin [L/min] durante toda a simulação.
     """
 
     duracao_s: float = 120.0       # Duração total da simulação [s]
     dt_s: float = 0.1              # Passo de integração [s]
-    vazao_lmin: float = 2.5       # Vazão fixa [L/min]; usado só se pressao_entrada_mca for None
-    pressao_entrada_mca: Optional[float] = None  # Pressão da rede [m.c.a.]; se definido, vazão = curva do fabricante
+    vazao_lmin: float = 2.5        # Vazão fixa [L/min]
     # Setpoint: constante ou função do tempo setpoint(t) -> °C
     setpoint_constante: Optional[float] = None
     setpoint_funcao: Optional[Callable[[float], float]] = None
@@ -86,11 +81,7 @@ class AmbienteSimulacao:
 
         pot_min = self.params_chuveiro.potencia_minima
         pot_max = self.params_chuveiro.potencia_maxima
-        # Vazão: da curva do fabricante (pressão) ou valor fixo
-        if cfg.pressao_entrada_mca is not None:
-            vazao = vazao_por_pressao(cfg.pressao_entrada_mca)
-        else:
-            vazao = cfg.vazao_lmin
+        vazao = cfg.vazao_lmin
 
         numero_passos = int(cfg.duracao_s / cfg.dt_s) + 1
         self.tempo_hist = [i * cfg.dt_s for i in range(numero_passos)]

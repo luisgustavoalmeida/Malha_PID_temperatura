@@ -17,10 +17,6 @@ eggs/
 *.egg-info/
 *.egg
 
-# Saídas da simulação e do tuning (regeneráveis)
-saida_simulacao/
-saida_tuning/
-
 # IDE e editores
 .idea/
 .vscode/
@@ -36,6 +32,9 @@ desktop.ini
 # Jupyter
 .ipynb_checkpoints/
 *.ipynb_checkpoints
+
+# Saídas do tuning (regeneráveis; não versionadas)
+saida_tuning/
 
 # Ambientes e variáveis locais (opcional)
 .env
