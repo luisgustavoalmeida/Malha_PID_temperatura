@@ -23,7 +23,7 @@ A ideia do projeto é **avaliar a viabilidade de um trabalho futuro** em que um 
 - Resposta ao degrau de setpoint e geração de gráficos (temperatura, potência, erro).
 - Ajuste por **grid search** (busca em grade) com critérios configuráveis (IAE, ITAE, ISE, overshoot, tempo de subida, etc.).
 - **Tuning robusto:** varredura de temperaturas, vazão e ganhos PID para obter um conjunto (Kp, Ki, Kd) que se comporta bem em várias condições.
-- Curva do fabricante (vazão) disponível como referência opcional; simulação usa apenas vazão informada diretamente.
+- Vazão informada diretamente na simulação (`vazao_lmin`).
 
 ---
 
@@ -64,7 +64,6 @@ Fluxo sugerido: configurar parâmetros do chuveiro e do meio → **ajustar o PID
 | `python run_simulation.py` | Roda a simulação com os ganhos atuais e gera gráficos em `saida_simulacao/`. |
 | `python run_tuning.py` | Resposta ao degrau + grid search; resultados em `saida_tuning/`. |
 | `python run_tuning_robusto.py` | Tuning robusto em vários cenários; resultado em `saida_tuning/tuning_robusto_resultado.txt`. |
-| `python plotar_curva_vazao.py` | (Opcional) Gera gráfico da curva do fabricante em `saida_simulacao/curva_vazao_fabricante.png`. |
 
 Os parâmetros do chuveiro, do PID e da simulação são editados nos próprios scripts (`run_simulation.py`, `run_tuning.py`, `run_tuning_robusto.py`). Para o tuning robusto, os intervalos (início, fim, passo) de cada variável são definidos em `RangesTuningRobusto` em `run_tuning_robusto.py`.
 
@@ -99,7 +98,6 @@ Ao rodar `python run_simulation.py`, são gerados gráficos como os abaixo: resp
 | `src/potentiometer.py` | `MapeamentoPotenciometro` — potenciômetro 50 kΩ e DAC/PWM (ESP32). |
 | `src/simulation.py` | `ConfiguracaoSimulacao`, `AmbienteSimulacao` — simulação chuveiro + PID. |
 | `src/plotter.py` | `Plotador`, `plotar_resposta`, `plotar_erro` — gráficos. |
-| `src/curva_vazao_fabricante.py` | Curva do fabricante (referência); simulação usa `vazao_lmin` diretamente. |
 | **`environments/`** | Ambientes de teste e tuning. |
 | `environments/base_environment.py` | `AmbienteBase` — base para ambientes de simulação. |
 | `environments/step_response.py` | `AmbienteRespostaDegrau` — resposta ao degrau. |
@@ -109,7 +107,6 @@ Ao rodar `python run_simulation.py`, são gerados gráficos como os abaixo: resp
 | `run_simulation.py` | Simulação e gráficos. |
 | `run_tuning.py` | Resposta ao degrau + grid search. |
 | `run_tuning_robusto.py` | Tuning robusto (multiprocessing). |
-| `plotar_curva_vazao.py` | Gráfico da curva do fabricante (opcional). |
 | `requirements.txt` | Dependências Python. |
 
 ---
