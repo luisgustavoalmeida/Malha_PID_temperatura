@@ -10,7 +10,7 @@ Descreve o balanço de energia na saída, com atraso de transporte:
 from dataclasses import dataclass
 from typing import Optional
 import numpy as np
-from .constants import CALOR_ESPECIFICO_AGUA, DENSIDADE_AGUA
+from .constantes import CALOR_ESPECIFICO_AGUA, DENSIDADE_AGUA
 
 
 @dataclass
@@ -206,5 +206,8 @@ class ModeloChuveiro:
 
     @property
     def temperatura_aquecedor(self) -> float:
-        """Temperatura atual no volume do aquecedor [°C]."""
+        """
+        Temperatura atual no volume do aquecedor [°C].
+        Útil para diagnóstico e firmware; a malha de controle usa apenas temperatura_saida.
+        """
         return self._temperatura_aquecedor

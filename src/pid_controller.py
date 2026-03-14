@@ -2,7 +2,7 @@
 Controlador PID com anti-windup e saturação de saída.
 
 A saída do PID é um sinal normalizado (0 a 1) que representa a potência desejada.
-O mapeamento para o potenciômetro de 50 kΩ (e para o ESP32) é feito em potentiometer.py.
+O mapeamento para o potenciômetro de 50 kΩ (e para o ESP32) é feito em potenciometro.py.
 """
 
 from dataclasses import dataclass
@@ -114,7 +114,10 @@ class ControladorPID:
         return float(acao_limite)
 
     def definir_limites(self, saida_minima: float, saida_maxima: float) -> None:
-        """Altera os limites de saturação da saída e recalcula o limite da integral."""
+        """
+        Altera os limites de saturação da saída e recalcula o limite da integral (anti-windup).
+        Útil para reconfigurar o controlador em tempo de execução (ex.: modos econômico/normal).
+        """
         self.params.saida_minima = saida_minima
         self.params.saida_maxima = saida_maxima
         self._integral_maxima = _calcular_integral_maxima(self.params)

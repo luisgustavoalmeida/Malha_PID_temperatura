@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from environments.ml_tuning import (
+from ambientes.sintonia_ml import (
     criterio_iae,
     criterio_ise,
     criterio_itae,
@@ -36,7 +36,7 @@ from environments.ml_tuning import (
     criterio_settling_time,
     criterio_undershoot,
 )
-from environments.tuning_robusto import (
+from ambientes.sintonia_robusta import (
     RangesTuningRobusto,
     RangeVar,
     TuningRobusto,
@@ -45,6 +45,10 @@ from src import ParamsChuveiro
 
 
 def main():
+    """
+    Executa o ajuste robusto da malha PID: varre condições de operação e ganhos (Kp, Ki, Kd),
+    avalia múltiplos critérios (IAE, ITAE, overshoot, etc.) e salva os top 10 por categoria.
+    """
     # ---- Parâmetros fixos do chuveiro (não variados no tuning) ----
     params_base = ParamsChuveiro(
         perda_meio=1.0,

@@ -1,7 +1,7 @@
 """
 Ambiente base para testes da malha PID: define interface comum e cenários de setpoint.
 
-Cada ambiente de teste (resposta ao degrau, tuning por ML, etc.) herda desta classe
+Cada ambiente de teste (resposta ao degrau, sintonia por ML, etc.) herda desta classe
 e implementa obter_configuracao() para definir duração, vazão e lei do setpoint.
 """
 
@@ -13,7 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src import AmbienteSimulacao, ConfiguracaoSimulacao, ParamsChuveiro, ParamsPID
-from src.plotter import Plotador
+from src.graficos import Plotador
 
 
 class AmbienteBase(ABC):

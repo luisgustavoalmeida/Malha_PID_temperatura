@@ -71,7 +71,7 @@ def plotar_resposta(
         y_min = centro - intervalo_minimo / 2.0
         y_max = centro + intervalo_minimo / 2.0
     eixo0.set_ylim(y_min, y_max)
-    # Marcas do eixo em valores “redondos” (múltiplos de 5)
+    # Marcas do eixo em valores "redondos" (múltiplos de 5)
     eixo0.yaxis.set_major_locator(MaxNLocator(integer=False, prune="both", nbins=8))
     _configurar_eixos(eixo0, "Temperatura")
 
@@ -175,5 +175,8 @@ class Plotador:
         return figuras
 
     def mostrar(self) -> None:
-        """Exibe as figuras na tela (requer backend interativo)."""
+        """
+        Exibe as figuras na tela (requer backend interativo, ex.: matplotlib.use('QtAgg')).
+        Alternativa: usar matplotlib.pyplot.show() após plotar_tudo().
+        """
         plt.show()

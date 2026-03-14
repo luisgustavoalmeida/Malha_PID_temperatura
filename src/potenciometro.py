@@ -51,6 +51,7 @@ class MapeamentoPotenciometro:
     ) -> float:
         """
         Converte resistência [Ω] de volta para sinal de controle (0–1 ou 0–100).
+        Útil para firmware (leitura do potenciômetro) e diagnóstico.
         """
         u = np.clip(
             resistencia_ohms / self.resistencia_total_ohms, 0.0, 1.0
@@ -64,7 +65,7 @@ class MapeamentoPotenciometro:
     ) -> int:
         """
         Mapeia o sinal de controle para valor de DAC 8 bits (0–255).
-        Útil para firmware do ESP32.
+        Útil para firmware do ESP32 (API para uso em hardware).
         """
         u = sinal_controle / 100.0 if percentual else sinal_controle
         u = np.clip(u, 0.0, 1.0)
@@ -73,7 +74,10 @@ class MapeamentoPotenciometro:
     def potencia_para_dac_12bit(
         self, sinal_controle: float, percentual: bool = False
     ) -> int:
-        """Mapeia o sinal de controle para valor de DAC 12 bits (0–4095)."""
+        """
+        Mapeia o sinal de controle para valor de DAC 12 bits (0–4095).
+        Útil para firmware do ESP32 (API para uso em hardware).
+        """
         u = sinal_controle / 100.0 if percentual else sinal_controle
         u = np.clip(u, 0.0, 1.0)
         return int(round(u * 4095))

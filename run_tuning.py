@@ -15,12 +15,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import matplotlib.pyplot as plt
 
-from environments import AmbienteRespostaDegrau, AmbienteTuningML
-from environments.ml_tuning import criterio_iae
+from ambientes import AmbienteRespostaDegrau, AmbienteTuningML
+from ambientes.sintonia_ml import criterio_iae
 from src import AmbienteSimulacao, ParamsChuveiro, ParamsPID
 
 
 def main():
+    """
+    Executa ajuste da malha PID: simula resposta ao degrau, faz busca em grade (Kp, Ki, Kd)
+    para minimizar o critério IAE e gera gráficos da resposta inicial e do PID otimizado.
+    """
     params_chuveiro = ParamsChuveiro(
         temperatura_inicial_agua=20.0,
         temperatura_desejada=38.0,

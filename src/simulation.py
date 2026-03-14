@@ -10,9 +10,9 @@ from dataclasses import dataclass
 from typing import List, Optional, Callable
 import numpy as np
 
-from .shower_model import ModeloChuveiro, ParamsChuveiro
+from .modelo_chuveiro import ModeloChuveiro, ParamsChuveiro
 from .pid_controller import ControladorPID, ParamsPID
-from .potentiometer import MapeamentoPotenciometro
+from .potenciometro import MapeamentoPotenciometro
 
 
 @dataclass

@@ -96,17 +96,17 @@ Ao rodar `python run_simulation.py`, são gerados gráficos como os abaixo: resp
 | Caminho | Descrição |
 |--------|------------|
 | **`src/`** | Núcleo do modelo e da simulação. |
-| `src/constants.py` | Constantes físicas (calor específico e densidade da água). |
-| `src/shower_model.py` | `ParamsChuveiro`, `ModeloChuveiro` — modelo parametrizado do chuveiro. |
+| `src/constantes.py` | Constantes físicas (calor específico e densidade da água). |
+| `src/modelo_chuveiro.py` | `ParamsChuveiro`, `ModeloChuveiro` — modelo parametrizado do chuveiro. |
 | `src/pid_controller.py` | `ParamsPID`, `ControladorPID` — PID com anti-windup. |
-| `src/potentiometer.py` | `MapeamentoPotenciometro` — potenciômetro 50 kΩ e DAC/PWM (ESP32). |
+| `src/potenciometro.py` | `MapeamentoPotenciometro` — potenciômetro 50 kΩ e DAC/PWM (ESP32). |
 | `src/simulation.py` | `ConfiguracaoSimulacao`, `AmbienteSimulacao` — simulação chuveiro + PID. |
-| `src/plotter.py` | `Plotador`, `plotar_resposta`, `plotar_erro` — gráficos. |
-| **`environments/`** | Ambientes de teste e tuning. |
-| `environments/base_environment.py` | `AmbienteBase` — base para ambientes de simulação. |
-| `environments/step_response.py` | `AmbienteRespostaDegrau` — resposta ao degrau. |
-| `environments/ml_tuning.py` | `AmbienteTuningML`, critérios (IAE, ITAE, overshoot, etc.), busca em grade. |
-| `environments/tuning_robusto.py` | `TuningRobusto`, `RangesTuningRobusto`, `RangeVar` — tuning robusto. |
+| `src/graficos.py` | `Plotador`, `plotar_resposta`, `plotar_erro` — gráficos. |
+| **`ambientes/`** | Ambientes de teste e sintonia. |
+| `ambientes/ambiente_base.py` | `AmbienteBase` — base para ambientes de simulação. |
+| `ambientes/resposta_degrau.py` | `AmbienteRespostaDegrau` — resposta ao degrau. |
+| `ambientes/sintonia_ml.py` | `AmbienteTuningML`, critérios (IAE, ITAE, overshoot, etc.), busca em grade. |
+| `ambientes/sintonia_robusta.py` | `TuningRobusto`, `RangesTuningRobusto`, `RangeVar` — sintonia robusta. |
 | **Raiz** | Scripts executáveis. |
 | `run_simulation.py` | Simulação e gráficos. |
 | `run_tuning.py` | Resposta ao degrau + grid search. |
@@ -148,7 +148,7 @@ Isso permite testar diferentes condições de meio e ganhos do PID sem alterar o
 
 ## Microcontrolador (implementação real)
 
-A saída do PID no modelo é potência normalizada (0–1). No **equipamento real**, essa saída é convertida em resistência do potenciômetro (0–50 kΩ) e em valor para DAC/PWM pela classe **`MapeamentoPotenciometro`** em `src/potentiometer.py`. Os ganhos ajustados na simulação podem ser usados diretamente no firmware embarcado (ESP32, ARM ou outro microcontrolador).
+A saída do PID no modelo é potência normalizada (0–1). No **equipamento real**, essa saída é convertida em resistência do potenciômetro (0–50 kΩ) e em valor para DAC/PWM pela classe **`MapeamentoPotenciometro`** em `src/potenciometro.py`. Os ganhos ajustados na simulação podem ser usados diretamente no firmware embarcado (ESP32, ARM ou outro microcontrolador).
 
 ---
 

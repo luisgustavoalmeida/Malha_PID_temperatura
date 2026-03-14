@@ -26,7 +26,7 @@ except ImportError:
         return iterable
 
 from src import AmbienteSimulacao, ParamsChuveiro, ParamsPID
-from .step_response import AmbienteRespostaDegrau
+from .resposta_degrau import AmbienteRespostaDegrau
 
 
 def criterio_iae(tempo: np.ndarray, erro: np.ndarray) -> float:

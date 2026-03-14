@@ -22,10 +22,14 @@ from src import (
     ParamsChuveiro,
     ParamsPID,
 )
-from src.plotter import Plotador
+from src.graficos import Plotador
 
 
 def main():
+    """
+    Configura parâmetros do chuveiro e do PID, executa a simulação da malha fechada
+    (resposta ao degrau) e gera gráficos na pasta saida_simulacao.
+    """
     # ---- Parâmetros do chuveiro (Lorenzetti 220V 6000W – curva do fabricante) ----
     params_chuveiro = ParamsChuveiro(
         temperatura_inicial_agua=20.0,

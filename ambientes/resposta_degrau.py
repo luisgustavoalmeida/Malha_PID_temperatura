@@ -11,12 +11,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src import ParamsChuveiro, ParamsPID, ConfiguracaoSimulacao
-from .base_environment import AmbienteBase
+from .ambiente_base import AmbienteBase
 
 
 class AmbienteRespostaDegrau(AmbienteBase):
     """
-    Setpoint permanece em um valor inicial até o instante t_degau_s;
+    Setpoint permanece em um valor inicial até o instante t_degrau_s;
     a partir daí passa para a temperatura_desejada dos parâmetros do chuveiro.
     """
 
@@ -30,6 +30,18 @@ class AmbienteRespostaDegrau(AmbienteBase):
         dt_s: float = 0.1,
         vazao_lmin: float = 2.5,
     ):
+        """
+        Inicializa o ambiente de resposta ao degrau.
+
+        Argumentos:
+            t_degrau_s: instante [s] em que o setpoint muda para temperatura_desejada.
+            setpoint_inicial: valor do setpoint antes do degrau; None = temperatura_inicial_agua.
+            params_chuveiro: parâmetros do chuveiro; None = padrão.
+            params_pid: parâmetros do PID; None = padrão.
+            duracao_s: duração da simulação [s].
+            dt_s: passo de integração [s].
+            vazao_lmin: vazão fixa [L/min].
+        """
         super().__init__(
             params_chuveiro=params_chuveiro,
             params_pid=params_pid,

@@ -31,11 +31,12 @@ try:
     from tqdm import tqdm
 except ImportError:
     def tqdm(iterable, desc="", **kwargs):
+        """Fallback sem barra de progresso se tqdm não estiver instalado."""
         return iterable
 
 from src import ParamsChuveiro, ParamsPID
-from .step_response import AmbienteRespostaDegrau
-from .ml_tuning import criterio_iae
+from .resposta_degrau import AmbienteRespostaDegrau
+from .sintonia_ml import criterio_iae
 
 # Estado global nos processos worker (preenchido por _worker_init)
 _worker_config: Optional[dict] = None
