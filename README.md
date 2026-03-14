@@ -1,5 +1,9 @@
 # Modelo computacional para ajuste de PID — Controle de temperatura em chuveiros elétricos
 
+<p align="center">
+  <img src="docs/Projeto conceito.png" alt="Controle de Temperatura — Modelagem → Simulação → Ajuste do controlador → Implementação em hardware" width="100%"/>
+</p>
+
 Simulador da malha de controle PID com modelo parametrizado do equipamento, para **ajustar ganhos (Kp, Ki, Kd) em software antes da implementação no hardware**.
 
 ---
@@ -72,14 +76,14 @@ Os parâmetros do chuveiro, do PID e da simulação são editados nos próprios 
 Ao rodar `python run_simulation.py`, são gerados gráficos como os abaixo: resposta da temperatura e da potência ao degrau de setpoint (ex.: 20 °C → 38 °C) e o erro de controle ao longo do tempo.
 
 <p align="center">
-  <img src="saida_simulacao_exemplo/malha_pid_resposta.png" alt="Resposta da malha PID: temperatura e potência" width="700"/>
+  <img src="docs/saida_simulacao_exemplo/malha_pid_resposta.png" alt="Resposta da malha PID: temperatura e potência" width="700"/>
 </p>
 <p align="center">
   <em>Resposta da malha PID — setpoint (tracejado), temperatura de saída e potência (%). Ex.: Kp=0,032, Ki=0,002, Kd=0,015.</em>
 </p>
 
 <p align="center">
-  <img src="saida_simulacao_exemplo/malha_pid_erro.png" alt="Erro de controle da malha PID" width="700"/>
+  <img src="sdocs/aida_simulacao_exemplo/malha_pid_erro.png" alt="Erro de controle da malha PID" width="700"/>
 </p>
 <p align="center">
   <em>Erro de controle (setpoint − saída). O erro converge para zero após o degrau de setpoint.</em>
