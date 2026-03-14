@@ -160,4 +160,4 @@ Python 3 · NumPy · Matplotlib · SciPy · scikit-learn · tqdm
 ## Próximos passos
 
 - **Primeira etapa (atual):** inclusão de outras técnicas de ajuste no modelo (ex.: Ziegler-Nichols, otimização bayesiana).
-- **Segunda etapa (software embarcado):** implementação em microcontrolador (ESP32 ou ARM) — firmware para leitura de setpoint e temperatura, execução do PID e comando do atuador (potenciômetro 50 kΩ), utilizando o mapeamento e os ganhos validados neste repositório.
+- **Segunda etapa (software embarcado):** implementação em microcontrolador (ESP32 ou ARM) — firmware para leitura de setpoint e temperatura, execução do PID e comando do atuador, utilizando o mapeamento e os ganhos validados neste repositório.
