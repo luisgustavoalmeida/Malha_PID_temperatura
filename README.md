@@ -91,7 +91,7 @@ Ao rodar `python run_simulation.py`, são gerados gráficos como os abaixo: resp
 
 | Caminho | Descrição |
 |--------|------------|
-| **`src/`** | Núcleo do modelo e da simulação (nomes em português). |
+| **`src/`** | Núcleo do modelo e da simulação. |
 | `src/constants.py` | Constantes físicas (calor específico e densidade da água). |
 | `src/shower_model.py` | `ParamsChuveiro`, `ModeloChuveiro` — modelo parametrizado do chuveiro. |
 | `src/pid_controller.py` | `ParamsPID`, `ControladorPID` — PID com anti-windup. |
