@@ -113,13 +113,69 @@ def plotar_erro(
     erro: np.ndarray,
     titulo: str = "Erro de controle",
     caminho_salvar: Optional[str] = None,
+    linhas_verticais: Optional[list] = None,
 ) -> plt.Figure:
     """Gera gráfico do erro (setpoint - temperatura de saída) ao longo do tempo."""
     fig, eixos = plt.subplots(1, 1, figsize=(8, 3))
     eixos.plot(tempo, erro, color="C4", label="Erro (setpoint - saída)")
     eixos.axhline(0, color="gray", linestyle="--")
+    if linhas_verticais:
+        for lv in linhas_verticais:
+            eixos.axvline(lv, color="red", linestyle=":", alpha=0.7, label="Perturbação")
     eixos.set_ylabel("Erro (°C)")
     _configurar_eixos(eixos, titulo)
+    plt.tight_layout()
+    if caminho_salvar:
+        Path(caminho_salvar).parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(caminho_salvar, dpi=150, bbox_inches="tight")
+    return fig
+
+
+def plotar_regime_zoom(
+    resultados: Dict[str, np.ndarray],
+    t_perturbacao: float,
+    margem_antes_s: float = 10.0,
+    titulo: str = "Regime permanente — zoom",
+    caminho_salvar: Optional[str] = None,
+) -> plt.Figure:
+    """
+    Gráfico ampliado em torno da perturbação: temperatura, erro e potência.
+    Eixo X relativo ao instante da perturbação (t = 0 na linha vermelha).
+    """
+    tempo = resultados["tempo"]
+    mask = tempo >= (t_perturbacao - margem_antes_s)
+    t_rel = tempo[mask] - t_perturbacao
+    setpoint = resultados["setpoint"][mask]
+    temperatura = resultados["temperatura"][mask]
+    erro = resultados["erro"][mask]
+    potencia = resultados.get("potencia_norm")
+    potencia_zoom = potencia[mask] * 100 if potencia is not None else None
+
+    fig, eixos = plt.subplots(3, 1, sharex=True, figsize=(10, 8))
+    eixos[0].plot(t_rel, setpoint, "--", color="C1", label="Setpoint (°C)")
+    eixos[0].plot(t_rel, temperatura, color="C0", label="Temperatura saída (°C)")
+    eixos[0].axvline(0, color="red", linestyle=":", alpha=0.7)
+    eixos[0].set_ylabel("Temperatura (°C)")
+    y_min = min(setpoint.min(), temperatura.min()) - 0.5
+    y_max = max(setpoint.max(), temperatura.max()) + 0.5
+    eixos[0].set_ylim(y_min, y_max)
+    _configurar_eixos(eixos[0], "Temperatura (zoom)")
+
+    eixos[1].plot(t_rel, erro, color="C4", label="Erro (°C)")
+    eixos[1].axhline(0, color="gray", linestyle="--")
+    eixos[1].axvline(0, color="red", linestyle=":", alpha=0.7)
+    eixos[1].set_ylabel("Erro (°C)")
+    _configurar_eixos(eixos[1], "Erro (zoom)")
+
+    if potencia_zoom is not None:
+        eixos[2].plot(t_rel, potencia_zoom, color="C2", label="Potência (%)")
+        eixos[2].axvline(0, color="red", linestyle=":", alpha=0.7, label="Perturbação")
+        eixos[2].set_ylabel("Potência (%)")
+        _configurar_eixos(eixos[2], "Potência (zoom)", rotulo_x="Tempo relativo à perturbação (s)")
+    else:
+        eixos[2].set_visible(False)
+
+    fig.suptitle(titulo, fontsize=12)
     plt.tight_layout()
     if caminho_salvar:
         Path(caminho_salvar).parent.mkdir(parents=True, exist_ok=True)

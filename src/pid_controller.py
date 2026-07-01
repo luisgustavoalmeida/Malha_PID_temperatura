@@ -6,7 +6,8 @@ O mapeamento para o potenciômetro de 50 kΩ (e para o ESP32) é feito em potenc
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
+
 import numpy as np
 
 
@@ -20,6 +21,9 @@ def _calcular_integral_maxima(params_pid: "ParamsPID") -> float:
     return (params_pid.saida_maxima - params_pid.saida_minima) / max(
         1e-9, params_pid.Ki
     )
+
+
+CriterioTrocaRegime = Literal["erro", "tempo", "hibrido"]
 
 
 @dataclass
@@ -113,6 +117,38 @@ class ControladorPID:
 
         return float(acao_limite)
 
+    def trocar_ganhos_sem_salto(
+        self,
+        novos_params: ParamsPID,
+        erro: float,
+        passo_tempo: float,
+    ) -> None:
+        """
+        Substitui Kp/Ki/Kd mantendo a contribuição integral na saída (anti-bump).
+        Preserva _ultimo_erro e _ultimo_tempo para continuidade do termo D.
+        """
+        acao_i = self.params.Ki * self._integral
+        self.params = novos_params
+        self._integral_maxima = _calcular_integral_maxima(self.params)
+        if self.params.Ki > 1e-9:
+            self._integral = acao_i / self.params.Ki
+        else:
+            acao_p = self.params.Kp * erro
+            acao_d = 0.0
+            if self._ultimo_erro is not None and passo_tempo > 0:
+                acao_d = self.params.Kd * (erro - self._ultimo_erro) / passo_tempo
+            acao_alvo = np.clip(
+                acao_p + acao_i + acao_d,
+                self.params.saida_minima,
+                self.params.saida_maxima,
+            )
+            self._integral = 0.0
+            if self.params.Ki > 1e-9:
+                self._integral = (acao_alvo - acao_p - acao_d) / self.params.Ki
+        self._integral = float(
+            np.clip(self._integral, -self._integral_maxima, self._integral_maxima)
+        )
+
     def definir_limites(self, saida_minima: float, saida_maxima: float) -> None:
         """
         Altera os limites de saturação da saída e recalcula o limite da integral (anti-windup).
@@ -121,3 +157,173 @@ class ControladorPID:
         self.params.saida_minima = saida_minima
         self.params.saida_maxima = saida_maxima
         self._integral_maxima = _calcular_integral_maxima(self.params)
+
+
+class ControladorPIDComAgendamento:
+    """
+    Um único PID: ganhos de partida até a troca; depois ganhos de regime.
+    Mantém integral/estado internos — troca sem vale na potência (bumpless).
+    """
+
+    def __init__(
+        self,
+        params_partida: ParamsPID,
+        params_regime: ParamsPID,
+        t_troca_regime_s: Optional[float] = None,
+        criterio_troca: CriterioTrocaRegime = "tempo",
+        limiar_partida: float = 2.0,
+        limiar_regime: float = 0.8,
+    ):
+        if criterio_troca == "tempo" and t_troca_regime_s is None:
+            raise ValueError("criterio_troca='tempo' exige t_troca_regime_s definido")
+        if limiar_regime >= limiar_partida:
+            raise ValueError("limiar_regime deve ser menor que limiar_partida")
+        self.params_partida = params_partida
+        self.params_regime = params_regime
+        self.t_troca_regime_s = t_troca_regime_s
+        self.criterio_troca = criterio_troca
+        self.limiar_partida = limiar_partida
+        self.limiar_regime = limiar_regime
+        self.pid = ControladorPID(params_partida)
+        self._fase: str = "partida"
+
+    @property
+    def params(self) -> ParamsPID:
+        return self.pid.params
+
+    @property
+    def modo_atual(self) -> str:
+        return self._fase
+
+    def reiniciar(self) -> None:
+        self.pid = ControladorPID(self.params_partida)
+        self._fase = "partida"
+
+    def _passo_tempo(self, tempo_atual: float) -> float:
+        if self.pid._ultimo_tempo is None:
+            return 1e-6
+        dt = tempo_atual - self.pid._ultimo_tempo
+        return dt if dt > 0 else 1e-6
+
+    def _deve_trocar_para_regime(self, erro: float, tempo_atual: float) -> bool:
+        if self._fase == "regime":
+            return False
+        if self.criterio_troca == "tempo":
+            return (
+                self.t_troca_regime_s is not None
+                and tempo_atual >= self.t_troca_regime_s
+            )
+        if self.criterio_troca == "hibrido":
+            if (
+                self.t_troca_regime_s is not None
+                and tempo_atual >= self.t_troca_regime_s
+            ):
+                return True
+            return abs(erro) < self.limiar_regime
+        return abs(erro) < self.limiar_regime
+
+    def _deve_trocar_para_partida(self, erro: float) -> bool:
+        if self._fase != "regime":
+            return False
+        if self.criterio_troca == "tempo":
+            return False
+        return abs(erro) > self.limiar_partida
+
+    def passo(
+        self, valor_desejado: float, valor_medido: float, tempo_atual: float
+    ) -> float:
+        erro = valor_desejado - valor_medido
+        dt = self._passo_tempo(tempo_atual)
+
+        if self._deve_trocar_para_regime(erro, tempo_atual):
+            self.pid.trocar_ganhos_sem_salto(self.params_regime, erro, dt)
+            self._fase = "regime"
+        elif self._deve_trocar_para_partida(erro):
+            self.pid.trocar_ganhos_sem_salto(self.params_partida, erro, dt)
+            self._fase = "partida"
+
+        return self.pid.passo(valor_desejado, valor_medido, tempo_atual)
+
+
+class ControladorPIDDual:
+    """
+    Dois PIDs com troca configurável entre malha de partida e malha de regime.
+
+    Criterio de troca (criterio_troca):
+    - "erro": histerese em |erro| (limiar_regime / limiar_partida)
+    - "tempo": malha de partida antes de t_troca_regime_s; regime depois
+    - "hibrido": troca em t_troca_regime_s OU por |erro|; volta a partida se |erro| > limiar_partida
+    """
+
+    def __init__(
+        self,
+        params_partida: ParamsPID,
+        params_regime: ParamsPID,
+        limiar_partida: float = 2.0,
+        limiar_regime: float = 0.8,
+        t_troca_regime_s: Optional[float] = None,
+        criterio_troca: CriterioTrocaRegime = "erro",
+    ):
+        if limiar_regime >= limiar_partida:
+            raise ValueError("limiar_regime deve ser menor que limiar_partida")
+        if criterio_troca == "tempo" and t_troca_regime_s is None:
+            raise ValueError("criterio_troca='tempo' exige t_troca_regime_s definido")
+        self.params_partida = params_partida
+        self.params_regime = params_regime
+        self.limiar_partida = limiar_partida
+        self.limiar_regime = limiar_regime
+        self.t_troca_regime_s = t_troca_regime_s
+        self.criterio_troca = criterio_troca
+        self.pid_partida = ControladorPID(params_partida)
+        self.pid_regime = ControladorPID(params_regime)
+        self._modo: str = "partida"
+
+    @property
+    def params(self) -> ParamsPID:
+        """Parâmetros do PID ativo (compatibilidade com AmbienteSimulacao)."""
+        if self._modo == "partida":
+            return self.params_partida
+        return self.params_regime
+
+    @property
+    def modo_atual(self) -> str:
+        return self._modo
+
+    def reiniciar(self) -> None:
+        self.pid_partida.reiniciar()
+        self.pid_regime.reiniciar()
+        self._modo = "partida"
+
+    def _atualizar_modo(self, erro: float, tempo_atual: float) -> None:
+        if self.criterio_troca == "tempo":
+            if (
+                self.t_troca_regime_s is not None
+                and tempo_atual >= self.t_troca_regime_s
+            ):
+                self._modo = "regime"
+            else:
+                self._modo = "partida"
+            return
+
+        if self.criterio_troca == "hibrido":
+            if (
+                self.t_troca_regime_s is not None
+                and tempo_atual >= self.t_troca_regime_s
+            ):
+                self._modo = "regime"
+
+        if self._modo == "partida":
+            if abs(erro) < self.limiar_regime:
+                self._modo = "regime"
+        elif abs(erro) > self.limiar_partida:
+            self._modo = "partida"
+
+    def passo(
+        self, valor_desejado: float, valor_medido: float, tempo_atual: float
+    ) -> float:
+        erro = valor_desejado - valor_medido
+        self._atualizar_modo(erro, tempo_atual)
+
+        if self._modo == "partida":
+            return self.pid_partida.passo(valor_desejado, valor_medido, tempo_atual)
+        return self.pid_regime.passo(valor_desejado, valor_medido, tempo_atual)

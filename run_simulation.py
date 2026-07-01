@@ -34,10 +34,10 @@ def main():
     params_chuveiro = ParamsChuveiro(
         temperatura_inicial_agua=20.0,
         temperatura_desejada=38.0,
-        temperatura_ambiente=10.0,
-        perda_meio=0.2,
+        temperatura_ambiente=28.0,
+        perda_meio=0.5,
         eficiencia_chuveiro=0.95,   # Etiqueta: 95%
-        potencia_minima=0.0,
+        potencia_minima=00.0,
         potencia_maxima=6000.0,    #6000W nominal
         vazao_minima=2.5,
         vazao_maxima=10.0,
@@ -46,16 +46,16 @@ def main():
 
     # ---- Parâmetros do PID (ajustar para tuning) ----
     params_pid = ParamsPID(
-        Kp=0.032,
-        Ki=0.002,
-        Kd=0.015,
+        Kp=0.048,
+        Ki=0.0024,
+        Kd=0.298,
         saida_minima=0.0,
         saida_maxima=1.0,
     )
 
     # ---- Potenciômetro 50 kΩ (para ESP32) ----
     potenciometro = MapeamentoPotenciometro(
-        resistencia_total_ohms=50_000.0, curva="linear"
+        resistencia_total_ohms=200_000.0, curva="linear"
     )
 
     # ---- Configuração da simulação: resposta ao degrau ----
@@ -70,9 +70,9 @@ def main():
         )
 
     config = ConfiguracaoSimulacao(
-        duracao_s=350.0,
+        duracao_s=500.0,
         dt_s=0.1,
-        vazao_lmin=3,
+        vazao_lmin=2.5,
         setpoint_funcao=setpoint_degrau,
     )
 

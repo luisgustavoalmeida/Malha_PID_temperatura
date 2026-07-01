@@ -1,16 +1,20 @@
 # Malha PID Temperatura - Chuveiro
 # Exporta classes e funções com nomes em português para uso no projeto.
 
-from .modelo_chuveiro import ModeloChuveiro, ParamsChuveiro
-from .pid_controller import ControladorPID, ParamsPID
+from .graficos import Plotador, plotar_erro, plotar_regime_zoom, plotar_resposta
+from .modelo_chuveiro import ModeloChuveiro, ModoControlePotencia, ParamsChuveiro
+from .pid_controller import ControladorPID, ControladorPIDComAgendamento, ControladorPIDDual, CriterioTrocaRegime, ParamsPID
 from .potenciometro import MapeamentoPotenciometro
 from .simulation import AmbienteSimulacao, ConfiguracaoSimulacao
-from .graficos import Plotador, plotar_resposta, plotar_erro
 
 __all__ = [
     "ModeloChuveiro",
+    "ModoControlePotencia",
     "ParamsChuveiro",
     "ControladorPID",
+    "ControladorPIDComAgendamento",
+    "ControladorPIDDual",
+    "CriterioTrocaRegime",
     "ParamsPID",
     "MapeamentoPotenciometro",
     "AmbienteSimulacao",
@@ -18,4 +22,5 @@ __all__ = [
     "Plotador",
     "plotar_resposta",
     "plotar_erro",
+    "plotar_regime_zoom",
 ]

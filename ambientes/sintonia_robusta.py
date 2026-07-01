@@ -390,7 +390,7 @@ class TuningRobusto:
 
         if num_workers is None:
             n_cpu = os.cpu_count() or 4
-            num_workers = max(1, n_cpu - 1)
+            num_workers = max(1, n_cpu) # até o numero de cores do computador
         num_workers = max(1, int(num_workers))
 
         if num_workers == 1:

@@ -4,7 +4,9 @@ Ambiente para ajuste da malha PID com técnicas de aprendizado de máquina (ou b
 Define critérios de desempenho:
 - Integrais: IAE, ITAE, ISE, ITSE
 - Resposta ao degrau: overshoot, undershoot, settling_time, rise_time, peak_time
-- Composto: criterio_rapido_estavel (ITAE + overshoot)
+- Regime permanente: erro_regime, oscilacao_regime
+- Compostos: criterio_rapido_estavel (ITAE + overshoot),
+  criterio_estavel_sem_erro (erro em regime + estabilidade)
 
 Permite testar vários conjuntos (Kp, Ki, Kd). Inclui busca em grade (grid search);
 futuramente: otimização bayesiana, reinforcement learning, etc.
@@ -90,6 +92,112 @@ def criterio_rapido_estavel(
         ov = criterio_overshoot(tempo, erro, setpoint=setpoint, temperatura=temperatura)
         return itae + peso_overshoot * ov
     return itae
+
+
+def _indice_regime_permanente(
+    tempo: np.ndarray, fracao_regime: float
+) -> int:
+    """Índice inicial do trecho considerado regime permanente (última fração da simulação)."""
+    n = len(tempo)
+    if n == 0:
+        return 0
+    fracao = min(max(fracao_regime, 0.05), 0.95)
+    return max(0, int((1.0 - fracao) * n))
+
+
+def criterio_erro_regime(
+    tempo: np.ndarray,
+    erro: np.ndarray,
+    setpoint: Optional[np.ndarray] = None,
+    temperatura: Optional[np.ndarray] = None,
+    fracao_regime: float = 0.4,
+) -> float:
+    """
+    Erro no regime permanente: média e pico de |erro| na fase final da simulação.
+
+    Foco em erro residual nulo (offset estacionário). Quanto menor, melhor.
+    setpoint/temperatura são ignorados; mantidos para compatibilidade com o tuning robusto.
+    """
+    if len(erro) == 0:
+        return float("inf")
+    i0 = _indice_regime_permanente(tempo, fracao_regime)
+    trecho = np.abs(erro[i0:])
+    if len(trecho) == 0:
+        return float("inf")
+    return float(np.mean(trecho) + 0.5 * np.max(trecho))
+
+
+def criterio_oscilacao_regime(
+    tempo: np.ndarray,
+    erro: np.ndarray,
+    setpoint: Optional[np.ndarray] = None,
+    temperatura: Optional[np.ndarray] = None,
+    fracao_regime: float = 0.4,
+) -> float:
+    """
+    Oscilação no regime permanente: desvio padrão do erro na fase final.
+
+    Penaliza ripples e hunting após acomodação. Quanto menor, melhor.
+    """
+    if len(erro) == 0:
+        return float("inf")
+    i0 = _indice_regime_permanente(tempo, fracao_regime)
+    trecho = erro[i0:]
+    if len(trecho) < 2:
+        return float(np.abs(erro[-1])) if len(erro) else float("inf")
+    return float(np.std(trecho))
+
+
+def criterio_estavel_sem_erro(
+    tempo: np.ndarray,
+    erro: np.ndarray,
+    setpoint: Optional[np.ndarray] = None,
+    temperatura: Optional[np.ndarray] = None,
+    fracao_regime: float = 0.4,
+    peso_erro_regime: float = 10.0,
+    peso_oscilacao: float = 3.0,
+    peso_overshoot: float = 1.0,
+    peso_undershoot: float = 0.5,
+    penalidade_sem_acomodacao: float = 1e4,
+    banda_pct: float = 2.0,
+) -> float:
+    """
+    Critério composto com foco em regime permanente sem erro e resposta estável.
+
+    Componentes (quanto menor, melhor):
+    - erro_regime: |erro| médio e pico na fase final (principal — offset nulo).
+    - oscilacao_regime: desvio padrão do erro na fase final (estabilidade).
+    - overshoot / undershoot: transientes indesejados.
+    - penalidade grande se a saída não acomodar na faixa ±banda_pct% do setpoint.
+
+    Aumente peso_erro_regime para priorizar ainda mais erro nulo em regime.
+    Aumente peso_oscilacao ou peso_overshoot para priorizar estabilidade.
+    """
+    custo = peso_erro_regime * criterio_erro_regime(
+        tempo, erro, fracao_regime=fracao_regime
+    )
+    custo += peso_oscilacao * criterio_oscilacao_regime(
+        tempo, erro, fracao_regime=fracao_regime
+    )
+    if setpoint is not None and temperatura is not None:
+        if peso_overshoot > 0:
+            custo += peso_overshoot * criterio_overshoot(
+                tempo, erro, setpoint=setpoint, temperatura=temperatura
+            )
+        if peso_undershoot > 0:
+            custo += peso_undershoot * criterio_undershoot(
+                tempo, erro, setpoint=setpoint, temperatura=temperatura
+            )
+        ts = criterio_settling_time(
+            tempo,
+            erro,
+            setpoint=setpoint,
+            temperatura=temperatura,
+            banda_pct=banda_pct,
+        )
+        if not np.isfinite(ts):
+            custo += penalidade_sem_acomodacao
+    return custo
 
 
 def criterio_settling_time(

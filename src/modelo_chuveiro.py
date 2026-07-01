@@ -8,9 +8,13 @@ Descreve o balanço de energia na saída, com atraso de transporte:
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
+
 import numpy as np
+
 from .constantes import CALOR_ESPECIFICO_AGUA, DENSIDADE_AGUA
+
+ModoControlePotencia = Literal["linear", "degrau"]
 
 
 @dataclass
@@ -26,7 +30,7 @@ class ParamsChuveiro:
     temperatura_ambiente: float = 20.0        # Temperatura do ambiente (perdas)
 
     # Perda para o meio [W/K] – condutância térmica equivalente (perdas no caminho)
-    perda_meio: float = 1.0
+    perda_meio: float = 0.5
 
     # Eficiência do chuveiro (0 a 1): fração da potência elétrica que vira calor na água
     # Etiqueta do fabricante: 95% (Lorenzetti Advanced Eletrônica Blindada)
@@ -38,6 +42,12 @@ class ParamsChuveiro:
     # Potência elétrica [W] – limites do resistor (fabricante: 6000W nominal, 2100W econômica)
     potencia_minima: float = 0.0
     potencia_maxima: float = 6000.0
+
+    # Controle de potência: "linear" (contínuo) ou "degrau" (potenciômetro digital)
+    modo_controle_potencia: ModoControlePotencia = "degrau"
+    # Passo de potência em % da potência nominal (potencia_maxima); usado só em modo "degrau"
+    # Ex.: 0.5 → níveis 0 %, 0,5 %, 1,0 %, … da potência nominal
+    incremento_potencia_pct: float = 0.5
 
     # Vazão [L/min] – intervalo de funcionamento conforme curva do fabricante (≈3,2 a ≈9,9 L/min)
     vazao_minima: float = 2.5
@@ -66,14 +76,43 @@ class ParamsChuveiro:
         volume_m3 = self.volume_canal / 1000.0  # [L] -> [m³]
         return volume_m3 / vazao_m3s
 
+    def passo_potencia_w(self) -> float:
+        """Incremento de potência [W] correspondente a incremento_potencia_pct da nominal."""
+        return (self.incremento_potencia_pct / 100.0) * self.potencia_maxima
+
+    def aplicar_controle_potencia(self, potencia_w: float) -> float:
+        """
+        Limita e, se modo "degrau", quantiza a potência ao degrau mais próximo.
+
+        Os degraus são múltiplos de incremento_potencia_pct da potência nominal,
+        alinhados a partir de potencia_minima.
+        """
+        pot_min = self.potencia_minima
+        pot_max = self.potencia_maxima
+        pot_clip = float(np.clip(potencia_w, pot_min, pot_max))
+
+        if self.modo_controle_potencia != "degrau":
+            return pot_clip
+
+        passo_w = self.passo_potencia_w()
+        if passo_w <= 0:
+            return pot_clip
+
+        indice = round((pot_clip - pot_min) / passo_w)
+        pot_degrau = pot_min + indice * passo_w
+        return float(np.clip(pot_degrau, pot_min, pot_max))
+
 
 class ModeloChuveiro:
     """
     Modelo computacional do chuveiro com atraso de transporte e perdas.
 
     Entradas de controle:
-    - potencia_w: potência elétrica aplicada [W] (limitada internamente)
+    - potencia_w: potência elétrica solicitada [W]
     - vazao_lmin: vazão de água [L/min] (afeta atraso e ganho térmico)
+
+    A potência efetiva segue ParamsChuveiro.modo_controle_potencia:
+    linear (contínua) ou degrau (quantização do potenciômetro digital).
 
     Saída:
     - temperatura_saida: temperatura na saída do chuveiro [°C], onde está o sensor.
@@ -88,6 +127,7 @@ class ModeloChuveiro:
         self._buffer_temperatura: list = []
         self._passo_tempo: float = 0.1  # Passo de simulação [s]
         self._numero_amostras_atraso: int = 1
+        self._ultima_potencia_aplicada_w: float = 0.0
 
     def definir_passo_tempo(self, passo_tempo: float) -> None:
         """Define o passo de integração da simulação [s]."""
@@ -114,7 +154,7 @@ class ModeloChuveiro:
         Executa um passo de simulação.
 
         Argumentos:
-            potencia_w: potência elétrica [W]
+            potencia_w: potência elétrica solicitada [W]
             vazao_lmin: vazão [L/min]
             temperatura_entrada: temperatura da água na entrada [°C]; se None, usa temperatura_inicial_agua.
 
@@ -129,11 +169,9 @@ class ModeloChuveiro:
         temp_ambiente = self.params.temperatura_ambiente
         eficiencia = self.params.eficiencia_chuveiro
         perda_meio = self.params.perda_meio
-        pot_min = self.params.potencia_minima
-        pot_max = self.params.potencia_maxima
 
-        # Limitar potência e vazão aos ranges de funcionamento
-        pot_limite = np.clip(potencia_w, pot_min, pot_max)
+        pot_limite = self.params.aplicar_controle_potencia(potencia_w)
+        self._ultima_potencia_aplicada_w = pot_limite
         vazao_limite = np.clip(vazao_lmin, self.params.vazao_minima, self.params.vazao_maxima)
 
         # Vazão em massa [kg/s]
@@ -198,6 +236,11 @@ class ModeloChuveiro:
         self._temperatura_saida = temp_inicial
         self._temperatura_aquecedor = temp_inicial
         self._buffer_temperatura = []
+
+    @property
+    def ultima_potencia_aplicada_w(self) -> float:
+        """Potência efetiva do último passo [W] (após limite e quantização em degraus)."""
+        return self._ultima_potencia_aplicada_w
 
     @property
     def temperatura_saida(self) -> float:
