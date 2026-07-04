@@ -16,7 +16,6 @@ A ideia do projeto é **avaliar a viabilidade de um trabalho futuro** em que um 
 
 - **Equipamento:** parâmetros como potência nominal, eficiência, volume do canal e faixa de vazão são configuráveis e refletem o chuveiro real.
 - **Meio e condições de uso:** temperatura da água de entrada, temperatura ambiente, perda térmica e vazão podem ser alterados para simular diferentes cenários.
-- **Vazão:** informada diretamente na simulação (em L/min).
 
 ---
 
@@ -25,12 +24,10 @@ A ideia do projeto é **avaliar a viabilidade de um trabalho futuro** em que um 
 - Simulação em malha fechada: setpoint → PID → potência → modelo do chuveiro → temperatura de saída.
 - Controlador PID com anti-windup; saída em potência normalizada (0–1), compatível com mapeamento para potenciômetro 50 kΩ e DAC/PWM no ESP32.
 - Resposta ao degrau de setpoint e geração de gráficos (temperatura, potência, erro).
-- Simulação em **regime permanente** com perturbações (setpoint, sensor ou entrada) e métricas de acomodação (ITAE local, pico de erro, oscilação).
 - **PID com troca de ganhos** (partida → regime) sem salto na potência, via `ControladorPIDComAgendamento`.
 - Modelo com **quantização de potência** (modo `degrau`) para aproximar potenciômetro digital.
-- Ajuste por **grid search** (busca em grade) com critérios configuráveis (IAE, ITAE, ISE, overshoot, tempo de subida, etc.).
-- **Tuning robusto:** varredura de temperaturas, vazão e ganhos PID em paralelo (`multiprocessing`), agregando o pior cenário (`agregar="max"`).
-- Vazão informada diretamente na simulação (`vazao_lmin`).
+- Ajuste por **grid search** com critérios configuráveis (IAE, ITAE, ISE, overshoot, tempo de subida, etc.).
+- **Tuning robusto:** varredura de condições de operação e ganhos PID em paralelo (`multiprocessing`), agregando o pior cenário (`agregar="max"`).
 
 ---
 
@@ -64,24 +61,44 @@ pip install -r requirements.txt
 
 ## Uso
 
-Fluxo sugerido: configurar parâmetros do chuveiro e do meio → **ajustar o PID na simulação** → usar os ganhos encontrados no equipamento real.
+### Fluxo recomendado
+
+1. Ajuste os parâmetros do chuveiro e do meio em `run_tuning_robusto.py` (`params_base` e `RangesTuningRobusto`).
+2. Execute o tuning robusto e analise o ranking da categoria **`estavel_sem_erro`**.
+3. Copie os ganhos (Kp, Ki, Kd) vencedores para `run_simulation.py`.
+4. Valide a resposta ao degrau com gráficos em `saida_simulacao/`.
+5. Use os ganhos validados no firmware embarcado (segunda etapa).
+
+### Scripts
 
 | Comando | Descrição |
 |--------|------------|
 | `python run_simulation.py` | Simulação com ganhos atuais; gráficos em `saida_simulacao/`. |
-| `python run_simulacao_regime.py` | Regime permanente + perturbação pequena; gráficos e métricas em `saida_simulacao/`. |
-| `python run_tuning.py` | Resposta ao degrau + grid search; resultados em `saida_tuning/`. |
+| `python run_tuning.py` | Resposta ao degrau + grid search simples (critério IAE); resultados em `saida_tuning/`. |
 | `python run_tuning_robusto.py` | Tuning robusto em vários cenários; ranking em `saida_tuning/tuning_robusto_resultado.txt`. |
 
 Os parâmetros do chuveiro, do PID e da simulação são editados nos próprios scripts. Para o tuning robusto, os intervalos (início, fim, passo) de cada variável são definidos em `RangesTuningRobusto` em `run_tuning_robusto.py`.
 
-As pastas `saida_simulacao/` e `saida_tuning/` são **geradas automaticamente** pelos scripts e não entram no repositório (ver `.gitignore`). Os exemplos visuais versionados ficam em `docs/`.
+### Saídas geradas
+
+As pastas abaixo são criadas automaticamente pelos scripts e **não entram no repositório** (ver `.gitignore`):
+
+| Pasta | Conteúdo |
+|-------|----------|
+| `saida_simulacao/` | Gráficos PNG da simulação (`malha_pid_resposta.png`, `malha_pid_erro.png`, etc.). |
+| `saida_tuning/` | Resultados do tuning (`tuning_robusto_resultado.txt`, gráficos do grid search). |
+
+Exemplos visuais versionados para documentação ficam em `docs/`.
 
 ### Tuning robusto — como escolher os ganhos
 
-Para resposta **rápida, estável e sem oscilações**, use o ranking da categoria **`estavel_sem_erro`** em `run_tuning_robusto.py`. Entre os melhores resultados, prefira o que tiver menor **`settling_time`**. Valide com `run_simulation.py` ou `run_simulacao_regime.py`.
+Para resposta **rápida, estável e sem oscilações**:
 
-Critério composto (menor é melhor):
+1. Priorize o ranking da categoria **`estavel_sem_erro`**.
+2. Entre os top 10, prefira o conjunto com menor **`settling_time`** (se habilitado nos critérios).
+3. Valide com `run_simulation.py` antes de usar no hardware.
+
+Critério composto **`estavel_sem_erro`** (menor é melhor):
 
 | Componente | Peso | Objetivo |
 |------------|------|----------|
@@ -90,29 +107,23 @@ Critério composto (menor é melhor):
 | Overshoot | 8 | Evitar ultrapassar o setpoint |
 | Undershoot | 2 | Penalizar ficar abaixo do alvo |
 | Banda de acomodação | ±1 % | Exige estabilização rigorosa |
+| Sem acomodação | penalidade 100 000 | Descarta combinações instáveis |
 
 A agregação **`max`** (pior caso) garante ganhos que funcionem em todas as combinações de vazão/temperatura definidas nos ranges.
 
-### Simulação em regime permanente
+Critérios ativos por padrão em `run_tuning_robusto.py`: `iae`, `itae`, `ise`, `itse`, `erro_regime`, `rapido_estavel`, `estavel_sem_erro`. Critérios individuais de degrau (`overshoot`, `settling_time`, etc.) podem ser reativados descomentando o bloco correspondente no script.
 
-```bash
-python run_simulacao_regime.py
-python run_simulacao_regime.py --tipo sensor
-python run_simulacao_regime.py --t-troca-regime 200 --t-pert 350
-python run_simulacao_regime.py --sem-troca-ganhos
-```
-
-Tipos de perturbação: `setpoint` (degrau pequeno), `sensor` (bias temporário na leitura) ou `entrada` (pulso na temperatura da água de entrada).
+Para desativar o paralelismo: `tuner.executar(num_workers=1)`.
 
 ### Exemplo de saída da simulação
 
-Ao rodar `python run_simulation.py`, são gerados gráficos como os abaixo: resposta da temperatura e da potência ao degrau de setpoint (ex.: 20 °C → 38 °C) e o erro de controle ao longo do tempo.
+Ao rodar `python run_simulation.py`, são gerados gráficos como os abaixo: resposta da temperatura e da potência ao degrau de setpoint (ex.: 25 °C → 40 °C) e o erro de controle ao longo do tempo.
 
 <p align="center">
   <img src="docs/malha_pid_resposta.png" alt="Resposta da malha PID: temperatura e potência" width="700"/>
 </p>
 <p align="center">
-  <em>Resposta da malha PID — setpoint (tracejado), temperatura de saída e potência (%). Ex.: Kp=0,032, Ki=0,002, Kd=0,015.</em>
+  <em>Resposta da malha PID — setpoint (tracejado), temperatura de saída e potência (%).</em>
 </p>
 
 <p align="center">
@@ -138,16 +149,15 @@ Ao rodar `python run_simulation.py`, são gerados gráficos como os abaixo: resp
 | **`ambientes/`** | Ambientes de teste e sintonia. |
 | `ambientes/ambiente_base.py` | `AmbienteBase` — base para ambientes de simulação. |
 | `ambientes/resposta_degrau.py` | `AmbienteRespostaDegrau` — resposta ao degrau. |
-| `ambientes/regime_permanente.py` | `AmbienteRegimePermanente` — perturbações em regime e métricas de acomodação. |
-| `ambientes/sintonia_ml.py` | `AmbienteTuningML`, critérios (IAE, ITAE, overshoot, etc.), busca em grade. |
+| `ambientes/sintonia_ml.py` | Critérios de desempenho (IAE, ITAE, overshoot, etc.) e `AmbienteTuningML`. |
 | `ambientes/sintonia_robusta.py` | `TuningRobusto`, `RangesTuningRobusto`, `RangeVar` — sintonia robusta. |
-| **`docs/`** | Diagramas e imagens de referência (exemplos de saída, conceito do projeto). |
+| **`docs/`** | Diagramas, exemplos de saída e imagens de referência do equipamento. |
 | **Raiz** | Scripts executáveis. |
 | `run_simulation.py` | Simulação e gráficos. |
-| `run_simulacao_regime.py` | Regime permanente, perturbações e troca de ganhos PID. |
-| `run_tuning.py` | Resposta ao degrau + grid search. |
+| `run_tuning.py` | Resposta ao degrau + grid search (IAE). |
 | `run_tuning_robusto.py` | Tuning robusto (multiprocessing). |
 | `requirements.txt` | Dependências Python. |
+| `.gitignore` | Ignora `.venv/`, `saida_simulacao/` e `saida_tuning/`. |
 
 ---
 
@@ -157,17 +167,19 @@ O modelo distingue parâmetros de **equipamento**, de **meio** e de **uso**.
 
 | Parâmetro | Descrição | Exemplo | Origem |
 |-----------|-----------|---------|--------|
-| `temperatura_inicial_agua` | Temperatura da água na entrada (°C) | 19 | Meio |
-| `temperatura_desejada` | Setpoint (°C) | 38 | Uso |
-| `temperatura_ambiente` | Temperatura do ambiente (°C) | 23 | Meio |
-| `perda_meio` | Perda térmica para o meio (W/K) | 2 | Meio |
+| `temperatura_inicial_agua` | Temperatura da água na entrada (°C) | 25 | Meio |
+| `temperatura_desejada` | Setpoint (°C) | 40 | Uso |
+| `temperatura_ambiente` | Temperatura do ambiente (°C) | 25 | Meio |
+| `perda_meio` | Perda térmica para o meio (W/K) | 0,5 | Meio |
 | `eficiencia_chuveiro` | Eficiência elétrica → térmica (0–1) | 0,95 | Equipamento |
 | `potencia_minima` / `potencia_maxima` | Potência do resistor (W) | 0 / 6000 | Equipamento |
-| `vazao_minima` / `vazao_maxima` | Faixa de vazão (L/min) | 2,5 / 10 | Equipamento / meio |
+| `vazao_minima` / `vazao_maxima` | Faixa de vazão (L/min) | 2 / 10 | Equipamento / meio |
 | `volume_canal` | Volume do canal aquecedor → saída (L) | 0,7 | Equipamento |
 | `tensao_nominal_v` | Tensão nominal (V) | 220 | Equipamento |
+| `modo_controle_potencia` | Controle contínuo (`linear`) ou quantizado (`degrau`) | `degrau` | Equipamento |
+| `incremento_potencia_pct` | Passo de quantização (% da potência nominal) | 0,5 | Equipamento |
 
-O atraso de transporte (tempo até a saída) é calculado a partir da **vazão** e do **volume do canal**. A vazão na simulação é sempre definida por **`vazao_lmin`** em `ConfiguracaoSimulacao` (L/min).
+O atraso de transporte (tempo até a saída) é calculado a partir da **vazão** e do **volume do canal**. A vazão na simulação é definida por **`vazao_lmin`** em `ConfiguracaoSimulacao` ou nos ambientes de tuning (L/min).
 
 ---
 
