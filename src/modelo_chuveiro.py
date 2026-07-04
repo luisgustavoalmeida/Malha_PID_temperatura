@@ -50,7 +50,7 @@ class ParamsChuveiro:
     incremento_potencia_pct: float = 0.5
 
     # Vazão [L/min] – intervalo de funcionamento conforme curva do fabricante (≈3,2 a ≈9,9 L/min)
-    vazao_minima: float = 2.5
+    vazao_minima: float = 2.0
     vazao_maxima: float = 10.0
 
     # Volume do canal do aquecedor até a saída [L] – usado no tempo de resposta e na dinâmica

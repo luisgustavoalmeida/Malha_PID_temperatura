@@ -34,7 +34,7 @@ class ConfiguracaoSimulacao:
 
     duracao_s: float = 120.0       # Duração total da simulação [s]
     dt_s: float = 0.1              # Passo de integração [s]
-    vazao_lmin: float = 2.5        # Vazão fixa [L/min]
+    vazao_lmin: float = 2.0        # Vazão fixa [L/min]
     # Setpoint: constante ou função do tempo setpoint(t) -> °C
     setpoint_constante: Optional[float] = None
     setpoint_funcao: Optional[Callable[[float], float]] = None

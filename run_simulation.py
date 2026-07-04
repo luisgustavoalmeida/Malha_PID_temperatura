@@ -32,23 +32,23 @@ def main():
     """
     # ---- Parâmetros do chuveiro (Lorenzetti 220V 6000W – curva do fabricante) ----
     params_chuveiro = ParamsChuveiro(
-        temperatura_inicial_agua=20.0,
-        temperatura_desejada=38.0,
-        temperatura_ambiente=28.0,
+        temperatura_inicial_agua=25.0,
+        temperatura_desejada=40.0,
+        temperatura_ambiente=25.0,
         perda_meio=0.5,
         eficiencia_chuveiro=0.95,   # Etiqueta: 95%
         potencia_minima=00.0,
         potencia_maxima=6000.0,    #6000W nominal
-        vazao_minima=2.5,
+        vazao_minima=2,
         vazao_maxima=10.0,
         volume_canal=0.7,  # [L] volume do canal aquecedor → saída
     )
 
     # ---- Parâmetros do PID (ajustar para tuning) ----
     params_pid = ParamsPID(
-        Kp=0.048,
-        Ki=0.0024,
-        Kd=0.298,
+        Kp=0.04,
+        Ki=0.0015,
+        Kd=0.25,
         saida_minima=0.0,
         saida_maxima=1.0,
     )
@@ -72,7 +72,7 @@ def main():
     config = ConfiguracaoSimulacao(
         duracao_s=500.0,
         dt_s=0.1,
-        vazao_lmin=2.5,
+        vazao_lmin=2.0,
         setpoint_funcao=setpoint_degrau,
     )
 

@@ -33,8 +33,9 @@ desktop.ini
 .ipynb_checkpoints/
 *.ipynb_checkpoints
 
-# Saídas do tuning (regeneráveis; não versionadas)
+# Saídas geradas pelos scripts (regeneráveis; não versionadas)
 saida_tuning/
+saida_simulacao/
 
 # Ambientes e variáveis locais (opcional)
 .env

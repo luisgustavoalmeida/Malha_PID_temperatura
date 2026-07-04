@@ -9,9 +9,10 @@ Para focar em atingir a temperatura desejada mais rápido e estável:
   - Use criterio_rapido_estavel: ITAE + penalidade de overshoot.
   - ITAE favorece resposta rápida; overshoot favorece estabilidade (menos ultrapassagem).
 
-Para focar em regime permanente sem erro e resposta estável:
-  - Use criterio_estavel_sem_erro: erro/oscilação na fase final + overshoot/undershoot.
-  - Ajuste peso_erro_regime (erro nulo) e peso_oscilacao / peso_overshoot (estabilidade).
+Para focar em regime permanente sem erro e resposta estável (recomendado para chuveiro):
+  - Priorize o ranking de estavel_sem_erro; entre os top 10, escolha o menor settling_time.
+  - Pesos atuais: erro_regime=10, oscilacao=8, overshoot=8, undershoot=2, banda ±1%.
+  - agregar="max" garante estabilidade no pior cenário (vazão/temperatura).
 
 Uso:
   python run_tuning_robusto.py
@@ -61,7 +62,7 @@ def main():
         eficiencia_chuveiro=0.95,
         potencia_minima=0.0,
         potencia_maxima=6000.0,
-        vazao_minima=2.5,
+        vazao_minima=1.8,
         vazao_maxima=10.0,
         volume_canal=0.7,
     )
@@ -69,14 +70,14 @@ def main():
     # ---- Ranges: início, fim e passo de cada variável ----
     # Condições de operação (serão variadas)
     ranges = RangesTuningRobusto(
-        temperatura_inicial_agua=RangeVar(inicio=23.0, fim=23.0, passo=4.0),
-        temperatura_desejada=RangeVar(inicio=38.0, fim=38.0, passo=1.0),
+        temperatura_inicial_agua=RangeVar(inicio=22.0, fim=22.0, passo=4.0),
+        temperatura_desejada=RangeVar(inicio=40.0, fim=40.0, passo=1.0),
         temperatura_ambiente=RangeVar(inicio=26.0, fim=26.0, passo=10),
-        vazao_lmin=RangeVar(inicio=2.5, fim=3.5, passo=1.0),
+        vazao_lmin=RangeVar(inicio=2.0, fim=3.0, passo=0.5),
         # Ganhos PID a buscar
-        Kp=RangeVar(inicio=0.000, fim=0.06, passo=0.002),
-        Ki=RangeVar(inicio=0.000, fim=0.003, passo=0.0002),
-        Kd=RangeVar(inicio=0.000, fim=0.50, passo=0.002),
+        Kp=RangeVar(inicio=0.000, fim=0.05, passo=0.005),
+        Ki=RangeVar(inicio=0.000, fim=0.002, passo=0.0005),
+        Kd=RangeVar(inicio=0.000, fim=0.40, passo=0.005),
     )
 
     # ---- Critérios: avaliar em uma única passada e guardar top 10 de cada categoria ----
@@ -91,23 +92,25 @@ def main():
         "ise": criterio_ise,       # Integral do erro² — penaliza mais erros grandes
         "itse": criterio_itse,     # Integral de tempo×erro² — erros grandes e tardios
         # Resposta ao degrau (quanto menor, melhor)
-        "overshoot": criterio_overshoot,     # % que a saída ultrapassou o setpoint
-        "undershoot": criterio_undershoot,   # % que a saída ficou abaixo do inicial
-        "settling_time": criterio_settling_time,  # [s] até entrar na faixa ±2% do setpoint
-        "rise_time": criterio_rise_time,    # [s] de 10% a 90% do valor final
-        "peak_time": criterio_peak_time,    # [s] instante do primeiro pico (máximo)
+        # "overshoot": criterio_overshoot,     # % que a saída ultrapassou o setpoint
+        # "undershoot": criterio_undershoot,   # % que a saída ficou abaixo do inicial
+        # "settling_time": criterio_settling_time,  # [s] até entrar na faixa ±2% do setpoint
+        # "rise_time": criterio_rise_time,    # [s] de 10% a 90% do valor final
+        # "peak_time": criterio_peak_time,    # [s] instante do primeiro pico (máximo)
         # Regime permanente (quanto menor, melhor)
         "erro_regime": partial(criterio_erro_regime, fracao_regime=0.4),
-        "oscilacao_regime": partial(criterio_oscilacao_regime, fracao_regime=0.4),
+        # "oscilacao_regime": partial(criterio_oscilacao_regime, fracao_regime=0.4),
         # Compostos
         "rapido_estavel": partial(criterio_rapido_estavel, peso_overshoot=0.1),
         "estavel_sem_erro": partial(
             criterio_estavel_sem_erro,
             fracao_regime=0.4,
             peso_erro_regime=10.0,
-            peso_oscilacao=3.0,
-            peso_overshoot=1.0,
-            peso_undershoot=0.5,
+            peso_oscilacao=8.0,
+            peso_overshoot=8.0,
+            peso_undershoot=2.0,
+            penalidade_sem_acomodacao=100_000.0,
+            banda_pct=1.0,
         ),
     }
 
@@ -115,7 +118,7 @@ def main():
     tuner = TuningRobusto(
         params_chuveiro_base=params_base,
         ranges=ranges,
-        duracao_s=250.0,
+        duracao_s=300.0,
         dt_s=0.1,
         t_degrau_s=3.0,
         criterios=criterios,
