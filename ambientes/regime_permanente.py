@@ -19,7 +19,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src import (
     ConfiguracaoSimulacao,
-    CriterioTrocaRegime,
     MapeamentoPotenciometro,
     ParamsChuveiro,
     ParamsPID,
@@ -112,7 +111,7 @@ class AmbienteRegimePermanente:
     """
     Simula estabilização em setpoint, perturbação pequena e métricas de correção.
 
-    Suporta PID único ou dual (partida + regime) via params_pid_regime.
+    Usa um único ControladorPID (como no firmware ESP32).
     """
 
     def __init__(
@@ -127,11 +126,6 @@ class AmbienteRegimePermanente:
         duracao_entrada_s: float = 8.0,
         params_chuveiro: Optional[ParamsChuveiro] = None,
         params_pid: Optional[ParamsPID] = None,
-        params_pid_regime: Optional[ParamsPID] = None,
-        limiar_erro_partida: float = 2.0,
-        limiar_erro_regime: float = 0.8,
-        t_troca_regime_s: Optional[float] = None,
-        criterio_troca_regime: CriterioTrocaRegime = "tempo",
         mapeamento_potenciometro: Optional[MapeamentoPotenciometro] = None,
         duracao_s: float = 250.0,
         dt_s: float = 0.1,
@@ -150,20 +144,12 @@ class AmbienteRegimePermanente:
         self.dt_s = dt_s
         self.vazao_lmin = vazao_lmin
         self.banda_acomodacao_c = banda_acomodacao_c
-        self.t_troca_regime_s = t_troca_regime_s
-        self.criterio_troca_regime = criterio_troca_regime
 
         self.params_chuveiro = params_chuveiro or ParamsChuveiro()
         self.params_pid = params_pid or ParamsPID(saida_minima=0.0, saida_maxima=1.0)
-        self.params_pid_regime = params_pid_regime
         self.simulacao = AmbienteSimulacao(
             params_chuveiro=self.params_chuveiro,
             params_pid=self.params_pid,
-            params_pid_regime=params_pid_regime,
-            limiar_erro_partida=limiar_erro_partida,
-            limiar_erro_regime=limiar_erro_regime,
-            t_troca_regime_s=t_troca_regime_s,
-            criterio_troca_regime=criterio_troca_regime,
             mapeamento_potenciometro=mapeamento_potenciometro,
         )
 

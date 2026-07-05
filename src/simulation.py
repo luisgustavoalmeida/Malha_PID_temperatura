@@ -7,40 +7,74 @@ O PID atua em potência normalizada (0–1). A simulação converte:
 """
 
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional
 
 import numpy as np
 
 from .modelo_chuveiro import ModeloChuveiro, ParamsChuveiro
-from .pid_controller import (
-    ControladorPID,
-    ControladorPIDComAgendamento,
-    ControladorPIDDual,
-    CriterioTrocaRegime,
-    ParamsPID,
-)
+from .pid_controller import ControladorPID, ParamsPID
 from .potenciometro import MapeamentoPotenciometro
 
-ControladorMalha = Union[ControladorPID, ControladorPIDComAgendamento, ControladorPIDDual]
+
+def processar_leitura_sensor(
+    temperatura_bruta: float,
+    buffer_amostras: List[float],
+    resolucao_c: Optional[float],
+    janela_media_movel: int,
+) -> float:
+    """
+    Modela a cadeia de leitura do sensor (como no ESP32):
+    1. Quantização: round(temp / resolucao) * resolucao
+    2. Média móvel das últimas amostras quantizadas
+    """
+    amostra = temperatura_bruta
+    if resolucao_c is not None and resolucao_c > 0:
+        amostra = round(amostra / resolucao_c) * resolucao_c
+
+    buffer_amostras.append(amostra)
+    janela = max(1, janela_media_movel)
+    while len(buffer_amostras) > janela:
+        buffer_amostras.pop(0)
+
+    if janela <= 1:
+        return float(amostra)
+    return float(np.mean(buffer_amostras))
 
 
 @dataclass
 class ConfiguracaoSimulacao:
     """
-    Configuração de uma corrida de simulação: duração, passo, vazão e setpoint.
+    Configuração de uma corrida de simulação da malha fechada.
 
-    A vazão é informada diretamente em vazao_lmin [L/min] durante toda a simulação.
+    Define duração, passo da planta, vazão, setpoint, tempos de sensor/PID,
+    modelo do sensor (quantização e filtro) e perturbações opcionais.
     """
 
-    duracao_s: float = 120.0       # Duração total da simulação [s]
-    dt_s: float = 0.1              # Passo de integração [s]
-    vazao_lmin: float = 2.0        # Vazão fixa [L/min]
-    # Setpoint: constante ou função do tempo setpoint(t) -> °C
+    # Duração total da simulação [s]
+    duracao_s: float = 120.0
+    # Passo de integração da planta (modelo físico) [s]. Menor = mais preciso, mais lento
+    dt_s: float = 0.1
+    # Vazão de água fixa durante toda a simulação [L/min]
+    vazao_lmin: float = 2.0
+    # Período entre leituras do sensor [s]. None ou 0 = a cada dt_s (contínuo)
+    tempo_aquisicao_sensor_s: Optional[float] = None
+    # Período entre atualizações do PID [s]. None ou 0 = a cada dt_s (contínuo)
+    tempo_calculo_pid_s: Optional[float] = None
+    # Passo de quantização da leitura [°C]: round(temp/resolucao)*resolucao (ESP32: 0.125)
+    sensor_resolucao_c: Optional[float] = 0.125
+    # Janela da média móvel sobre amostras quantizadas; 1 = sem filtro
+    sensor_janela_media_movel: int = 3
+    # Setpoint constante [°C]; ignorado se setpoint_funcao estiver definida
     setpoint_constante: Optional[float] = None
+    # Lei do setpoint: função tempo [s] → temperatura [°C] (ex.: degrau, rampa)
     setpoint_funcao: Optional[Callable[[float], float]] = None
-    # Perturbações opcionais (°C): bias na medição do sensor ou na água de entrada
+    # Bias adicional na medição do sensor [°C]: função tempo → desvio
     perturbacao_medicao: Optional[Callable[[float], float]] = None
+    # Perturbação na temperatura da água de entrada [°C]: função tempo → desvio
     perturbacao_entrada: Optional[Callable[[float], float]] = None
+    # Atraso para aplicar mudança de setpoint na malha [s] (ESP32: ALVO_TEMP_PAUSA_MS = 1,5)
+    # None ou 0 = setpoint da função aplicado imediatamente (degrau clássico)
+    setpoint_atraso_aplicacao_s: Optional[float] = 1.5
 
 
 class AmbienteSimulacao:
@@ -54,43 +88,23 @@ class AmbienteSimulacao:
         self,
         params_chuveiro: Optional[ParamsChuveiro] = None,
         params_pid: Optional[ParamsPID] = None,
-        params_pid_regime: Optional[ParamsPID] = None,
-        limiar_erro_partida: float = 2.0,
-        limiar_erro_regime: float = 0.8,
-        t_troca_regime_s: Optional[float] = None,
-        criterio_troca_regime: CriterioTrocaRegime = "tempo",
-        usar_pid_dual_legacy: bool = False,
         mapeamento_potenciometro: Optional[MapeamentoPotenciometro] = None,
     ):
+        """
+        Monta a malha fechada chuveiro + PID + potenciômetro.
+
+        Usa um único ControladorPID (como no firmware ESP32, sem troca partida/regime).
+
+        params_chuveiro: modelo físico da planta.
+        params_pid: ganhos e limites do PID.
+        mapeamento_potenciometro: conversão saída normalizada → resistência [Ω].
+        """
         self.chuveiro = ModeloChuveiro(params_chuveiro)
         params_base = params_pid or ParamsPID(saida_minima=0.0, saida_maxima=1.0)
-        if params_pid_regime is not None:
-            if usar_pid_dual_legacy:
-                self.controlador_pid: ControladorMalha = ControladorPIDDual(
-                    params_partida=params_base,
-                    params_regime=params_pid_regime,
-                    limiar_partida=limiar_erro_partida,
-                    limiar_regime=limiar_erro_regime,
-                    t_troca_regime_s=t_troca_regime_s,
-                    criterio_troca=criterio_troca_regime,
-                )
-            else:
-                self.controlador_pid = ControladorPIDComAgendamento(
-                    params_partida=params_base,
-                    params_regime=params_pid_regime,
-                    t_troca_regime_s=t_troca_regime_s,
-                    criterio_troca=criterio_troca_regime,
-                    limiar_partida=limiar_erro_partida,
-                    limiar_regime=limiar_erro_regime,
-                )
-            self._pid_agendado = True
-        else:
-            self.controlador_pid = ControladorPID(params_base)
-            self._pid_agendado = False
+        self.controlador_pid = ControladorPID(params_base)
         self.potenciometro = mapeamento_potenciometro or MapeamentoPotenciometro()
         self.params_chuveiro = self.chuveiro.params
         self.params_pid = params_base
-        self.params_pid_regime = params_pid_regime
 
         # Históricos da última simulação (preenchidos por executar())
         self.tempo_hist: List[float] = []
@@ -100,8 +114,6 @@ class AmbienteSimulacao:
         self.potencia_w_hist: List[float] = []
         self.resistencia_hist: List[float] = []
         self.erro_hist: List[float] = []
-        self.modo_pid_hist: List[str] = []
-        self._dual_pid = self._pid_agendado
 
     def _obter_setpoint(self, tempo: float, config: ConfiguracaoSimulacao) -> float:
         """Retorna o setpoint no instante dado (função ou constante)."""
@@ -131,6 +143,17 @@ class AmbienteSimulacao:
         vazao = cfg.vazao_lmin
         temp_entrada_base = self.params_chuveiro.temperatura_inicial_agua
 
+        periodo_sensor = (
+            cfg.tempo_aquisicao_sensor_s
+            if cfg.tempo_aquisicao_sensor_s and cfg.tempo_aquisicao_sensor_s > 0
+            else cfg.dt_s
+        )
+        periodo_pid = (
+            cfg.tempo_calculo_pid_s
+            if cfg.tempo_calculo_pid_s and cfg.tempo_calculo_pid_s > 0
+            else cfg.dt_s
+        )
+
         numero_passos = int(cfg.duracao_s / cfg.dt_s) + 1
         self.tempo_hist = [i * cfg.dt_s for i in range(numero_passos)]
         self.setpoint_hist = []
@@ -139,19 +162,63 @@ class AmbienteSimulacao:
         self.potencia_w_hist = []
         self.resistencia_hist = []
         self.erro_hist = []
-        self.modo_pid_hist = []
+
+        temperatura_medida = self.chuveiro.temperatura_saida
+        acao_norm = 0.0
+        proxima_aquisicao_sensor = 0.0
+        proximo_calculo_pid = 0.0
+        buffer_sensor: List[float] = []
+
+        setpoint_alvo = self._obter_setpoint(0.0, cfg)
+        setpoint_malha = setpoint_alvo
+        setpoint_alvo_anterior = setpoint_alvo
+        tempo_mudanca_setpoint = 0.0
+        atraso_sp = cfg.setpoint_atraso_aplicacao_s or 0.0
 
         for tempo_atual in self.tempo_hist:
-            setpoint = self._obter_setpoint(tempo_atual, cfg)
-            temperatura_planta = self.chuveiro.temperatura_saida
-            bias_medicao = self._perturbacao(cfg.perturbacao_medicao, tempo_atual)
-            temperatura_medida = temperatura_planta + bias_medicao
+            setpoint_alvo = self._obter_setpoint(tempo_atual, cfg)
+
+            if abs(setpoint_alvo - setpoint_alvo_anterior) > 1e-6:
+                tempo_mudanca_setpoint = tempo_atual
+                setpoint_alvo_anterior = setpoint_alvo
+                if atraso_sp <= 0 and abs(setpoint_malha - setpoint_alvo) > 1e-6:
+                    setpoint_malha = setpoint_alvo
+                    self.controlador_pid.sincronizar_integral_para_saida(
+                        acao_norm, setpoint_malha, temperatura_medida
+                    )
+
+            if (
+                atraso_sp > 0
+                and abs(setpoint_malha - setpoint_alvo) > 1e-6
+                and tempo_atual - tempo_mudanca_setpoint >= atraso_sp
+            ):
+                setpoint_malha = setpoint_alvo
+                self.controlador_pid.sincronizar_integral_para_saida(
+                    acao_norm, setpoint_malha, temperatura_medida
+                )
+
+            setpoint = setpoint_malha
             delta_entrada = self._perturbacao(cfg.perturbacao_entrada, tempo_atual)
             temperatura_entrada = temp_entrada_base + delta_entrada
 
-            acao_norm = self.controlador_pid.passo(
-                setpoint, temperatura_medida, tempo_atual
-            )
+            if tempo_atual >= proxima_aquisicao_sensor:
+                temperatura_planta = self.chuveiro.temperatura_saida
+                bias_medicao = self._perturbacao(cfg.perturbacao_medicao, tempo_atual)
+                temperatura_bruta = temperatura_planta + bias_medicao
+                temperatura_medida = processar_leitura_sensor(
+                    temperatura_bruta,
+                    buffer_sensor,
+                    cfg.sensor_resolucao_c,
+                    cfg.sensor_janela_media_movel,
+                )
+                proxima_aquisicao_sensor += periodo_sensor
+
+            if tempo_atual >= proximo_calculo_pid:
+                acao_norm = self.controlador_pid.passo(
+                    setpoint, temperatura_medida, tempo_atual
+                )
+                proximo_calculo_pid += periodo_pid
+
             potencia_solicitada_w = pot_min + acao_norm * (pot_max - pot_min)
             temperatura_saida = self.chuveiro.passo(
                 potencia_solicitada_w, vazao, temperatura_entrada=temperatura_entrada
@@ -166,23 +233,16 @@ class AmbienteSimulacao:
                 acao_norm_aplicada
             )
 
-            modo = (
-                self.controlador_pid.modo_atual
-                if self._pid_agendado
-                else "unico"
-            )
-
             self.setpoint_hist.append(setpoint)
             self.temperatura_hist.append(temperatura_saida)
             self.potencia_norm_hist.append(acao_norm_aplicada)
             self.potencia_w_hist.append(potencia_w)
             self.resistencia_hist.append(resistencia_ohm)
             self.erro_hist.append(setpoint - temperatura_saida)
-            self.modo_pid_hist.append(modo)
 
     def obter_resultados(self) -> dict:
         """Retorna dicionário com arrays numpy (tempo, setpoint, temperatura, etc.) para plot e análise."""
-        resultados = {
+        return {
             "tempo": np.array(self.tempo_hist),
             "setpoint": np.array(self.setpoint_hist),
             "temperatura": np.array(self.temperatura_hist),
@@ -191,6 +251,3 @@ class AmbienteSimulacao:
             "resistencia_ohm": np.array(self.resistencia_hist),
             "erro": np.array(self.erro_hist),
         }
-        if self._pid_agendado:
-            resultados["modo_pid"] = np.array(self.modo_pid_hist)
-        return resultados

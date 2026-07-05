@@ -22,8 +22,9 @@ class MapeamentoPotenciometro:
     - valor para DAC/PWM do ESP32 (8 ou 12 bits).
     """
 
+    # Resistência total do potenciômetro eletrônico [Ω]
     resistencia_total_ohms: float = POTENCIOMETRO_TOTAL_OHMS
-    # Curva: "linear" ou "log" (curva log dá mais resolução em baixa potência)
+    # Curva de mapeamento: "linear" ou "log" (log dá mais resolução em baixa potência)
     curva: str = "linear"
 
     def potencia_para_resistencia_ohms(

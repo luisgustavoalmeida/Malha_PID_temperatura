@@ -22,13 +22,18 @@ class AmbienteRespostaDegrau(AmbienteBase):
 
     def __init__(
         self,
-        t_degrau_s: float = 10.0,
-        setpoint_inicial: Optional[float] = None,
+        t_degrau_s: float = 10.0,              # s — instante do degrau de setpoint
+        setpoint_inicial: Optional[float] = None,  # °C — antes do degrau; None = temp. inicial água
         params_chuveiro: Optional[ParamsChuveiro] = None,
         params_pid: Optional[ParamsPID] = None,
-        duracao_s: float = 120.0,
-        dt_s: float = 0.1,
-        vazao_lmin: float = 2.5,
+        duracao_s: float = 120.0,              # s — duração da simulação
+        dt_s: float = 0.1,                       # s — passo de integração da planta
+        vazao_lmin: float = 2.5,                 # L/min — vazão fixa
+        tempo_aquisicao_sensor_s: Optional[float] = None,  # s — período do sensor; None = dt_s
+        tempo_calculo_pid_s: Optional[float] = None,       # s — período do PID; None = dt_s
+        sensor_resolucao_c: Optional[float] = 0.125,     # °C — quantização; None = contínuo
+        sensor_janela_media_movel: int = 3,              # amostras — média móvel; 1 = sem filtro
+        setpoint_atraso_aplicacao_s: Optional[float] = 1.5,  # s — atraso encoder→malha (ESP32: 1,5 s)
     ):
         """
         Inicializa o ambiente de resposta ao degrau.
@@ -39,8 +44,12 @@ class AmbienteRespostaDegrau(AmbienteBase):
             params_chuveiro: parâmetros do chuveiro; None = padrão.
             params_pid: parâmetros do PID; None = padrão.
             duracao_s: duração da simulação [s].
-            dt_s: passo de integração [s].
+            dt_s: passo de integração da planta [s].
             vazao_lmin: vazão fixa [L/min].
+            tempo_aquisicao_sensor_s: período de leitura do sensor [s]; None = a cada dt_s.
+            tempo_calculo_pid_s: período de atualização do PID [s]; None = a cada dt_s.
+            sensor_resolucao_c: passo de quantização [°C] (ex.: 0.125); None ou 0 = contínuo.
+            sensor_janela_media_movel: amostras na média móvel; 1 = sem filtro.
         """
         super().__init__(
             params_chuveiro=params_chuveiro,
@@ -51,6 +60,11 @@ class AmbienteRespostaDegrau(AmbienteBase):
         self.duracao_s = duracao_s
         self.dt_s = dt_s
         self.vazao_lmin = vazao_lmin
+        self.tempo_aquisicao_sensor_s = tempo_aquisicao_sensor_s
+        self.tempo_calculo_pid_s = tempo_calculo_pid_s
+        self.sensor_resolucao_c = sensor_resolucao_c
+        self.sensor_janela_media_movel = sensor_janela_media_movel
+        self.setpoint_atraso_aplicacao_s = setpoint_atraso_aplicacao_s
 
     def obter_configuracao(self) -> ConfiguracaoSimulacao:
         """Configuração com setpoint em degrau no instante t_degrau_s."""
@@ -69,4 +83,9 @@ class AmbienteRespostaDegrau(AmbienteBase):
             dt_s=self.dt_s,
             vazao_lmin=self.vazao_lmin,
             setpoint_funcao=setpoint_funcao,
+            tempo_aquisicao_sensor_s=self.tempo_aquisicao_sensor_s,
+            tempo_calculo_pid_s=self.tempo_calculo_pid_s,
+            sensor_resolucao_c=self.sensor_resolucao_c,
+            sensor_janela_media_movel=self.sensor_janela_media_movel,
+            setpoint_atraso_aplicacao_s=self.setpoint_atraso_aplicacao_s,
         )

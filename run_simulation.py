@@ -30,37 +30,31 @@ def main():
     Configura parâmetros do chuveiro e do PID, executa a simulação da malha fechada
     (resposta ao degrau) e gera gráficos na pasta saida_simulacao.
     """
-    # ---- Parâmetros do chuveiro (Lorenzetti 220V 6000W – curva do fabricante) ----
+    # ---- Parâmetros do chuveiro (modelo físico da planta) ----
     params_chuveiro = ParamsChuveiro(
-        temperatura_inicial_agua=25.0,
-        temperatura_desejada=40.0,
-        temperatura_ambiente=25.0,
-        perda_meio=0.5,
-        eficiencia_chuveiro=0.95,   # Etiqueta: 95%
-        potencia_minima=00.0,
-        potencia_maxima=6000.0,    #6000W nominal
-        vazao_minima=2,
-        vazao_maxima=10.0,
-        volume_canal=0.7,  # [L] volume do canal aquecedor → saída
+        temperatura_inicial_agua=20.0,   # °C — água na entrada (também setpoint antes do degrau)
+        temperatura_desejada=40.0,       # °C — alvo da malha após o degrau
+        temperatura_ambiente=25.0,       # °C — ambiente para cálculo de perdas térmicas
+        vazao_minima=2.0,                # L/min — limite inferior de vazão no modelo
     )
 
-    # ---- Parâmetros do PID (ajustar para tuning) ----
+    # ---- Parâmetros do PID (ganhos da malha de controle) ----
     params_pid = ParamsPID(
-        Kp=0.04,
-        Ki=0.0015,
-        Kd=0.25,
-        saida_minima=0.0,
-        saida_maxima=1.0,
+        Kp=0.04,           # ganho proporcional — resposta ao erro instantâneo
+        Ki=0.0013,          # ganho integral — elimina erro em regime
+        Kd=0.375,            # ganho derivativo — amortecimento (derivada da medida, −Kd·dPV/dt)
+        saida_minima=0.0,   # saída mínima normalizada (0 = potência mínima)
+        saida_maxima=1.0,   # saída máxima normalizada (1 = potência máxima)
     )
 
-    # ---- Potenciômetro 50 kΩ (para ESP32) ----
+    # ---- Potenciômetro eletrônico (mapeamento saída PID → resistência para ESP32) ----
     potenciometro = MapeamentoPotenciometro(
-        resistencia_total_ohms=200_000.0, curva="linear"
+        resistencia_total_ohms=200_000.0,  # Ω — resistência total do potenciômetro
+        curva="linear",                      # "linear" ou "log"
     )
 
-    # ---- Configuração da simulação: resposta ao degrau ----
-    # O setpoint usa temperatura_inicial_agua até t_degrau_s e depois temperatura_desejada
-    t_degrau_s = 5.0  # instante do degrau [s]
+    # ---- Cenário: resposta ao degrau de setpoint ----
+    t_degrau_s = 5.0  # s — instante em que o setpoint salta para temperatura_desejada
 
     def setpoint_degrau(tempo):
         return (
@@ -69,11 +63,17 @@ def main():
             else params_chuveiro.temperatura_inicial_agua
         )
 
+    # ---- Configuração temporal e do sensor (alinhado ao firmware ESP32) ----
     config = ConfiguracaoSimulacao(
-        duracao_s=500.0,
-        dt_s=0.1,
-        vazao_lmin=2.0,
-        setpoint_funcao=setpoint_degrau,
+        duracao_s=500.0,                    # s — tempo total da simulação
+        dt_s=0.1,                           # s — passo de integração da planta
+        vazao_lmin=1.0,                     # L/min — vazão fixa durante a simulação
+        setpoint_funcao=setpoint_degrau,    # lei do setpoint em função do tempo
+        tempo_aquisicao_sensor_s=0.38,      # s — período entre leituras do sensor (380 ms)
+        tempo_calculo_pid_s=0.38,           # s — período entre cálculos do PID (380 ms)
+        sensor_resolucao_c=0.125,           # °C — quantização: round(temp/0.125)*0.125 (11 bits)
+        sensor_janela_media_movel=3,        # amostras — média móvel sobre leituras quantizadas
+        setpoint_atraso_aplicacao_s=1.5,    # s — atraso encoder→malha (ESP32: ALVO_TEMP_PAUSA_MS)
     )
 
     # ---- Executar simulação e plotar ----

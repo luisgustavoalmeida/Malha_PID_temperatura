@@ -24,40 +24,40 @@ class ParamsChuveiro:
     Todos os valores são ajustáveis para refletir o equipamento real.
     """
 
-    # Temperaturas [°C]
-    temperatura_inicial_agua: float = 18.0   # Temperatura da água na entrada
-    temperatura_desejada: float = 38.0       # Setpoint desejado pelo usuário
-    temperatura_ambiente: float = 20.0        # Temperatura do ambiente (perdas)
+    # Temperatura da água na entrada do chuveiro [°C] (condição inicial da planta)
+    temperatura_inicial_agua: float = 18.0
+    # Setpoint desejado pelo usuário [°C] (alvo da malha de controle)
+    temperatura_desejada: float = 38.0
+    # Temperatura do ambiente [°C] — usada no cálculo de perdas térmicas para o meio
+    temperatura_ambiente: float = 20.0
 
-    # Perda para o meio [W/K] – condutância térmica equivalente (perdas no caminho)
-    perda_meio: float = 0.5
+    # Condutância térmica equivalente [W/K]: perda = perda_meio × (T_água − T_ambiente)
+    perda_meio: float = 0.2
 
-    # Eficiência do chuveiro (0 a 1): fração da potência elétrica que vira calor na água
-    # Etiqueta do fabricante: 95% (Lorenzetti Advanced Eletrônica Blindada)
+    # Fração da potência elétrica convertida em calor na água (0 a 1). Fabricante: 95%
     eficiencia_chuveiro: float = 0.95
 
-    # Tensão nominal [V] – referência (220V no fabricante)
+    # Tensão nominal de referência [V] (equipamento: 220 V)
     tensao_nominal_v: float = 220.0
 
-    # Potência elétrica [W] – limites do resistor (fabricante: 6000W nominal, 2100W econômica)
+    # Potência mínima e máxima do resistor [W] (nominal: 6000 W)
     potencia_minima: float = 0.0
     potencia_maxima: float = 6000.0
 
-    # Controle de potência: "linear" (contínuo) ou "degrau" (potenciômetro digital)
+    # "linear" = potência contínua; "degrau" = quantização (potenciômetro digital / ESP32)
     modo_controle_potencia: ModoControlePotencia = "degrau"
-    # Passo de potência em % da potência nominal (potencia_maxima); usado só em modo "degrau"
-    # Ex.: 0.5 → níveis 0 %, 0,5 %, 1,0 %, … da potência nominal
-    incremento_potencia_pct: float = 0.5
+    # Níveis discretos entre mínima e máxima (modo "degrau").
+    # Ex.: 100 → índices 0..100; nível 0 = 0 W, nível 100 = potencia_maxima
+    numero_passos_potencia: int = 100
 
-    # Vazão [L/min] – intervalo de funcionamento conforme curva do fabricante (≈3,2 a ≈9,9 L/min)
-    vazao_minima: float = 2.0
+    # Faixa de vazão válida do equipamento [L/min] (limita entradas na simulação)
+    vazao_minima: float = 1.8
     vazao_maxima: float = 10.0
 
-    # Volume do canal do aquecedor até a saída [L] – usado no tempo de resposta e na dinâmica
-    # tempo_resposta = volume_canal / vazão. Ex.: ~0,08 L (equivalente a 80 mL)
-    volume_canal: float = 0.7
+    # Volume do canal aquecedor até a saída [L]. Define atraso de transporte: τ = volume / vazão
+    volume_canal: float = 0.850
 
-    # Limites de temperatura [°C] – segurança e saturação do modelo
+    # Limites de saturação do modelo [°C] (segurança e clipping interno)
     temperatura_minima: float = 10.0
     temperatura_maxima: float = 45.0
 
@@ -77,15 +77,18 @@ class ParamsChuveiro:
         return volume_m3 / vazao_m3s
 
     def passo_potencia_w(self) -> float:
-        """Incremento de potência [W] correspondente a incremento_potencia_pct da nominal."""
-        return (self.incremento_potencia_pct / 100.0) * self.potencia_maxima
+        """Incremento de potência [W] entre dois níveis consecutivos (modo degrau)."""
+        faixa = self.potencia_maxima - self.potencia_minima
+        if self.numero_passos_potencia <= 0:
+            return faixa
+        return faixa / self.numero_passos_potencia
 
     def aplicar_controle_potencia(self, potencia_w: float) -> float:
         """
-        Limita e, se modo "degrau", quantiza a potência ao degrau mais próximo.
+        Limita e, se modo "degrau", quantiza a potência ao nível discreto mais próximo.
 
-        Os degraus são múltiplos de incremento_potencia_pct da potência nominal,
-        alinhados a partir de potencia_minima.
+        Os níveis vão de 0 a numero_passos_potencia entre potencia_minima e potencia_maxima.
+        Ex.: numero_passos_potencia=100 → índices 0..100 (0 W .. potencia_maxima).
         """
         pot_min = self.potencia_minima
         pot_max = self.potencia_maxima
@@ -94,13 +97,17 @@ class ParamsChuveiro:
         if self.modo_controle_potencia != "degrau":
             return pot_clip
 
-        passo_w = self.passo_potencia_w()
-        if passo_w <= 0:
+        n_passos = self.numero_passos_potencia
+        if n_passos <= 0:
             return pot_clip
 
-        indice = round((pot_clip - pot_min) / passo_w)
-        pot_degrau = pot_min + indice * passo_w
-        return float(np.clip(pot_degrau, pot_min, pot_max))
+        faixa = pot_max - pot_min
+        if faixa <= 0:
+            return pot_min
+
+        indice = int(round((pot_clip - pot_min) / faixa * n_passos))
+        indice = int(np.clip(indice, 0, n_passos))
+        return float(pot_min + (indice / n_passos) * faixa)
 
 
 class ModeloChuveiro:

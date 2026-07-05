@@ -38,6 +38,21 @@ from src import ParamsChuveiro, ParamsPID
 from .resposta_degrau import AmbienteRespostaDegrau
 from .sintonia_ml import criterio_iae
 
+
+def _criar_barra_progresso(total: int, desc: str = "Tuning robusto (PID)"):
+    """Barra tqdm com preenchimento sólido (█), visível no Cursor/CMD moderno."""
+    return tqdm(
+        total=total,
+        desc=desc,
+        unit="pid",
+        file=sys.stderr,
+        dynamic_ncols=True,
+        mininterval=0.3,
+        miniters=1,
+        ascii=False,
+        smoothing=0.1,
+    )
+
 # Estado global nos processos worker (preenchido por _worker_init)
 _worker_config: Optional[dict] = None
 _worker_condicoes: Optional[List[Tuple[float, float, float, float]]] = None
@@ -66,6 +81,11 @@ def _worker_avaliar_pid(pid_tuple: Tuple[float, float, float]) -> Union[
     duracao_s = _worker_config["duracao_s"]
     dt_s = _worker_config["dt_s"]
     t_degrau_s = _worker_config["t_degrau_s"]
+    tempo_aquisicao_sensor_s = _worker_config.get("tempo_aquisicao_sensor_s")
+    tempo_calculo_pid_s = _worker_config.get("tempo_calculo_pid_s")
+    sensor_resolucao_c = _worker_config.get("sensor_resolucao_c", 0.125)
+    sensor_janela_media_movel = _worker_config.get("sensor_janela_media_movel", 3)
+    setpoint_atraso_aplicacao_s = _worker_config.get("setpoint_atraso_aplicacao_s", 1.5)
     agregar = _worker_config["agregar"]
 
     if "criterios" in _worker_config:
@@ -81,6 +101,8 @@ def _worker_avaliar_pid(pid_tuple: Tuple[float, float, float]) -> Union[
                 eficiencia_chuveiro=params_base.eficiencia_chuveiro,
                 potencia_minima=params_base.potencia_minima,
                 potencia_maxima=params_base.potencia_maxima,
+                modo_controle_potencia=params_base.modo_controle_potencia,
+                numero_passos_potencia=params_base.numero_passos_potencia,
                 vazao_minima=params_base.vazao_minima,
                 vazao_maxima=params_base.vazao_maxima,
                 volume_canal=params_base.volume_canal,
@@ -93,6 +115,11 @@ def _worker_avaliar_pid(pid_tuple: Tuple[float, float, float]) -> Union[
                 duracao_s=duracao_s,
                 dt_s=dt_s,
                 vazao_lmin=vazao,
+                tempo_aquisicao_sensor_s=tempo_aquisicao_sensor_s,
+                tempo_calculo_pid_s=tempo_calculo_pid_s,
+                sensor_resolucao_c=sensor_resolucao_c,
+                sensor_janela_media_movel=sensor_janela_media_movel,
+                setpoint_atraso_aplicacao_s=setpoint_atraso_aplicacao_s,
             )
             resultados = ambiente.executar()
             tempo = resultados["tempo"]
@@ -122,6 +149,8 @@ def _worker_avaliar_pid(pid_tuple: Tuple[float, float, float]) -> Union[
                 eficiencia_chuveiro=params_base.eficiencia_chuveiro,
                 potencia_minima=params_base.potencia_minima,
                 potencia_maxima=params_base.potencia_maxima,
+                modo_controle_potencia=params_base.modo_controle_potencia,
+                numero_passos_potencia=params_base.numero_passos_potencia,
                 vazao_minima=params_base.vazao_minima,
                 vazao_maxima=params_base.vazao_maxima,
                 volume_canal=params_base.volume_canal,
@@ -134,6 +163,11 @@ def _worker_avaliar_pid(pid_tuple: Tuple[float, float, float]) -> Union[
                 duracao_s=duracao_s,
                 dt_s=dt_s,
                 vazao_lmin=vazao,
+                tempo_aquisicao_sensor_s=tempo_aquisicao_sensor_s,
+                tempo_calculo_pid_s=tempo_calculo_pid_s,
+                sensor_resolucao_c=sensor_resolucao_c,
+                sensor_janela_media_movel=sensor_janela_media_movel,
+                setpoint_atraso_aplicacao_s=setpoint_atraso_aplicacao_s,
             )
             resultados = ambiente.executar()
             tempo = resultados["tempo"]
@@ -164,11 +198,16 @@ def _gerar_valores(inicio: float, fim: float, passo: float) -> List[float]:
 
 @dataclass
 class RangeVar:
-    """Range para uma variável: início, fim e passo."""
+    """
+    Intervalo de varredura para uma variável no tuning robusto.
 
-    inicio: float
-    fim: float
-    passo: float
+    Gera valores de inicio a fim (inclusivo) com o passo indicado.
+    Se inicio == fim, a variável fica fixa nesse valor.
+    """
+
+    inicio: float   # Primeiro valor a testar
+    fim: float      # Último valor a testar (inclusivo)
+    passo: float    # Incremento entre valores consecutivos
 
     def gerar(self) -> List[float]:
         """Retorna lista de valores no range [inicio, fim] com passo."""
@@ -182,21 +221,24 @@ class RangesTuningRobusto:
     Ajuste inicio, fim e passo conforme a necessidade da simulação.
     """
 
-    # Condições de operação
+    # Temperatura da água na entrada [°C] — varia entre cenários de operação
     temperatura_inicial_agua: RangeVar = field(
         default_factory=lambda: RangeVar(inicio=15.0, fim=20.0, passo=2.0)
     )
+    # Setpoint desejado [°C] — varia entre cenários de operação
     temperatura_desejada: RangeVar = field(
         default_factory=lambda: RangeVar(inicio=36.0, fim=38.0, passo=0.25)
     )
+    # Temperatura ambiente para perdas térmicas [°C]
     temperatura_ambiente: RangeVar = field(
         default_factory=lambda: RangeVar(inicio=18.0, fim=20.0, passo=5.0)
     )
+    # Vazão fixa da simulação [L/min] em cada cenário
     vazao_lmin: RangeVar = field(
         default_factory=lambda: RangeVar(inicio=2.4, fim=5.0, passo=2.5)
     )
 
-    # Ganhos do PID
+    # Ganhos PID a varrer na busca (quanto menor o passo, mais combinações)
     Kp: RangeVar = field(default_factory=lambda: RangeVar(inicio=0.000, fim=0.9, passo=0.01))
     Ki: RangeVar = field(default_factory=lambda: RangeVar(inicio=0.000, fim=0.02, passo=0.001))
     Kd: RangeVar = field(default_factory=lambda: RangeVar(inicio=0.000, fim=0.9, passo=0.01))
@@ -230,24 +272,41 @@ class TuningRobusto:
         duracao_s: float = 120.0,
         dt_s: float = 0.1,
         t_degrau_s: float = 10.0,
+        tempo_aquisicao_sensor_s: Optional[float] = None,
+        tempo_calculo_pid_s: Optional[float] = None,
+        sensor_resolucao_c: Optional[float] = 0.125,
+        sensor_janela_media_movel: int = 3,
+        setpoint_atraso_aplicacao_s: Optional[float] = 1.5,
         criterio: Optional[Callable[..., float]] = None,
         criterios: Optional[Dict[str, Callable[..., float]]] = None,
         agregar: str = "media",  # "media" ou "max" (pior caso)
     ):
         """
         params_chuveiro_base: parâmetros fixos do chuveiro (potência, eficiência, etc.);
-          temperatura e vazão são sobrescritos por cada condição.
-        ranges: ranges para variar; se None, usa RangesTuningRobusto().
+          temperatura e vazão são sobrescritos por cada condição do range.
+        ranges: intervalos de varredura; se None, usa RangesTuningRobusto().
+        duracao_s: duração de cada simulação [s].
+        dt_s: passo de integração da planta [s].
+        t_degrau_s: instante do degrau de setpoint [s] (teste de resposta).
+        tempo_aquisicao_sensor_s: período de leitura do sensor [s]; None = a cada dt_s.
+        tempo_calculo_pid_s: período de atualização do PID [s]; None = a cada dt_s.
+        sensor_resolucao_c: quantização da leitura [°C]; None ou 0 = contínuo.
+        sensor_janela_media_movel: amostras na média móvel; 1 = sem filtro.
+        setpoint_atraso_aplicacao_s: atraso encoder→malha [s]; None ou 0 = imediato.
         criterio: critério único (quanto menor, melhor). Usado se criterios for None.
-        criterios: se informado, avalia todos os critérios em uma única passada e
-          executar() retorna dict[nome, ranking]. Ignora criterio quando presente.
-        agregar: "media" = média do critério sobre condições; "max" = pior caso.
+        criterios: dict de critérios avaliados em uma única passada (retorna rankings).
+        agregar: "media" = média do critério sobre condições; "max" = pior cenário.
         """
         self.params_base = params_chuveiro_base or ParamsChuveiro()
         self.ranges = ranges or RangesTuningRobusto()
         self.duracao_s = duracao_s
         self.dt_s = dt_s
         self.t_degrau_s = t_degrau_s
+        self.tempo_aquisicao_sensor_s = tempo_aquisicao_sensor_s
+        self.tempo_calculo_pid_s = tempo_calculo_pid_s
+        self.sensor_resolucao_c = sensor_resolucao_c
+        self.sensor_janela_media_movel = sensor_janela_media_movel
+        self.setpoint_atraso_aplicacao_s = setpoint_atraso_aplicacao_s
         self.criterio = criterio if criterio is not None else criterio_iae
         self.criterios = criterios  # dict nome -> callable; se não None, executar() retorna rankings por categoria
         self.agregar = agregar
@@ -271,6 +330,8 @@ class TuningRobusto:
             eficiencia_chuveiro=self.params_base.eficiencia_chuveiro,
             potencia_minima=self.params_base.potencia_minima,
             potencia_maxima=self.params_base.potencia_maxima,
+            modo_controle_potencia=self.params_base.modo_controle_potencia,
+            numero_passos_potencia=self.params_base.numero_passos_potencia,
             vazao_minima=self.params_base.vazao_minima,
             vazao_maxima=self.params_base.vazao_maxima,
             volume_canal=self.params_base.volume_canal,
@@ -283,6 +344,11 @@ class TuningRobusto:
             duracao_s=self.duracao_s,
             dt_s=self.dt_s,
             vazao_lmin=vazao_lmin,
+            tempo_aquisicao_sensor_s=self.tempo_aquisicao_sensor_s,
+            tempo_calculo_pid_s=self.tempo_calculo_pid_s,
+            sensor_resolucao_c=self.sensor_resolucao_c,
+            sensor_janela_media_movel=self.sensor_janela_media_movel,
+            setpoint_atraso_aplicacao_s=self.setpoint_atraso_aplicacao_s,
         )
         resultados = ambiente.executar()
         tempo = resultados["tempo"]
@@ -338,6 +404,8 @@ class TuningRobusto:
                 eficiencia_chuveiro=self.params_base.eficiencia_chuveiro,
                 potencia_minima=self.params_base.potencia_minima,
                 potencia_maxima=self.params_base.potencia_maxima,
+                modo_controle_potencia=self.params_base.modo_controle_potencia,
+                numero_passos_potencia=self.params_base.numero_passos_potencia,
                 vazao_minima=self.params_base.vazao_minima,
                 vazao_maxima=self.params_base.vazao_maxima,
                 volume_canal=self.params_base.volume_canal,
@@ -350,6 +418,11 @@ class TuningRobusto:
                 duracao_s=self.duracao_s,
                 dt_s=self.dt_s,
                 vazao_lmin=vazao,
+                tempo_aquisicao_sensor_s=self.tempo_aquisicao_sensor_s,
+                tempo_calculo_pid_s=self.tempo_calculo_pid_s,
+                sensor_resolucao_c=self.sensor_resolucao_c,
+                sensor_janela_media_movel=self.sensor_janela_media_movel,
+                setpoint_atraso_aplicacao_s=self.setpoint_atraso_aplicacao_s,
             )
             resultados = ambiente.executar()
             tempo = resultados["tempo"]
@@ -394,14 +467,9 @@ class TuningRobusto:
         num_workers = max(1, int(num_workers))
 
         if num_workers == 1:
-            # Execução em série
             resultados_lista: List[Tuple[Tuple[float, float, float], Union[float, Dict[str, float]]]] = []
-            iterador_pid = (
-                tqdm(combinacoes_pid, desc="Tuning robusto (PID)", unit="pid")
-                if mostrar_progresso
-                else combinacoes_pid
-            )
-            for Kp, Ki, Kd in iterador_pid:
+            pbar = _criar_barra_progresso(len(combinacoes_pid)) if mostrar_progresso else None
+            for Kp, Ki, Kd in combinacoes_pid:
                 pid_tuple = (Kp, Ki, Kd)
                 if multi:
                     d = self.avaliar_pid_robusto_multi(
@@ -411,10 +479,14 @@ class TuningRobusto:
                 else:
                     valor_agg = self.avaliar_pid_robusto(Kp, Ki, Kd, combinacoes_condicoes)
                     resultados_lista.append((pid_tuple, valor_agg))
+                if pbar is not None:
+                    pbar.update(1)
+            if pbar is not None:
+                pbar.close()
         else:
-            timeout_por_pid = 120
             if mostrar_progresso:
-                print(f"  Usando {num_workers} processos em paralelo (timeout {timeout_por_pid}s por PID).")
+                print(f"  Usando {num_workers} processos em paralelo.", flush=True)
+                print("  Inicializando workers...", flush=True)
             if multi:
                 criterios_lista = [(nome, self.criterios[nome]) for nome in nomes_criterios]
                 config = {
@@ -422,6 +494,11 @@ class TuningRobusto:
                     "duracao_s": self.duracao_s,
                     "dt_s": self.dt_s,
                     "t_degrau_s": self.t_degrau_s,
+                    "tempo_aquisicao_sensor_s": self.tempo_aquisicao_sensor_s,
+                    "tempo_calculo_pid_s": self.tempo_calculo_pid_s,
+                    "sensor_resolucao_c": self.sensor_resolucao_c,
+                    "sensor_janela_media_movel": self.sensor_janela_media_movel,
+                    "setpoint_atraso_aplicacao_s": self.setpoint_atraso_aplicacao_s,
                     "criterios": criterios_lista,
                     "agregar": self.agregar,
                 }
@@ -431,6 +508,11 @@ class TuningRobusto:
                     "duracao_s": self.duracao_s,
                     "dt_s": self.dt_s,
                     "t_degrau_s": self.t_degrau_s,
+                    "tempo_aquisicao_sensor_s": self.tempo_aquisicao_sensor_s,
+                    "tempo_calculo_pid_s": self.tempo_calculo_pid_s,
+                    "sensor_resolucao_c": self.sensor_resolucao_c,
+                    "sensor_janela_media_movel": self.sensor_janela_media_movel,
+                    "setpoint_atraso_aplicacao_s": self.setpoint_atraso_aplicacao_s,
                     "criterio": self.criterio,
                     "agregar": self.agregar,
                 }
@@ -439,30 +521,18 @@ class TuningRobusto:
                 initializer=_worker_init,
                 initargs=(config, combinacoes_condicoes),
             ) as pool:
-                futures = [
-                    pool.apply_async(_worker_avaliar_pid, (pid,))
-                    for pid in combinacoes_pid
-                ]
+                pbar = _criar_barra_progresso(len(combinacoes_pid)) if mostrar_progresso else None
                 resultados_lista = []
-                iterador = (
-                    tqdm(
-                        zip(combinacoes_pid, futures),
-                        total=len(combinacoes_pid),
-                        desc="Tuning robusto (PID)",
-                        unit="pid",
-                    )
-                    if mostrar_progresso
-                    else zip(combinacoes_pid, futures)
-                )
-                for pid_tuple, future in iterador:
-                    try:
-                        resultado = future.get(timeout=timeout_por_pid)
-                    except (TimeoutError, MPTimeoutError):
-                        if multi:
-                            resultado = (pid_tuple, {n: float("inf") for n in nomes_criterios})
-                        else:
-                            resultado = (pid_tuple, float("inf"))
+                for resultado in pool.imap_unordered(
+                    _worker_avaliar_pid,
+                    combinacoes_pid,
+                    chunksize=1,
+                ):
                     resultados_lista.append(resultado)
+                    if pbar is not None:
+                        pbar.update(1)
+                if pbar is not None:
+                    pbar.close()
 
         if multi:
             ranking_por_criterio: Dict[str, List[Tuple[Tuple[float, float, float], float]]] = {}
